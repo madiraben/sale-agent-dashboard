@@ -12,13 +12,13 @@ import {
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const items: SidebarItem[] = [
-    {  label: "Dashboard", icon: <MdDashboard />   },
-    {   label: "Sales", icon:< MdShoppingCart/> },
-    {  label: "Products", icon: <MdInventory /> },
-    {  label: "AI Knowledge", icon: <MdBook /> },
-    {  label: "Customers", icon: <MdPeople /> },
-    {   label: "Reports", icon: <MdAssessment/> },
-    {  label: "Settings", icon: <MdSettings /> },
+    {  href: "/dashboard", label: "Dashboard", icon: <MdDashboard />   },
+    {  href: "/dashboard/sales", label: "Sales", icon:< MdShoppingCart/> },
+    {  href: "/dashboard/products", label: "Products", icon: <MdInventory /> },
+    {  href: "/dashboard/add-ai-knowleadge", label: "AI Knowledge", icon: <MdBook /> },
+    {  href: "/dashboard/customers", label: "Customers", icon: <MdPeople /> },
+    {  href: "/dashboard/play-ground", label: "Playground", icon: <MdAssessment/> },
+    {  href: "/dashboard/settings", label: "Settings", icon: <MdSettings /> },
   ];
 
   return (

@@ -2,9 +2,11 @@
 
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import Link from "next/link";
 import React from "react";
 
 export type SidebarItem = {
+  href: string;
   label: string;
   icon: React.ReactNode;
 };
@@ -38,12 +40,14 @@ export default function Sidebar({ items, className = "" }: SidebarProps) {
       </div>
       <nav className="mt-3 flex-1 space-y-2 px-4">
         {items.map((item, idx) => {
-          const active = pathname === item.label;
+          const active = pathname === item.href;
           return (
+            <Link key={item.href ?? idx} href={item.href}>
               <ItemContainer key={item.label ?? idx} active={active}>
                 <span className="shrink-0 text-white/80">{item.icon}</span>
                 <span className="truncate">{item.label}</span>
               </ItemContainer>
+            </Link>
           );
         })}
       </nav>
