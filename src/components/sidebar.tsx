@@ -8,7 +8,8 @@ import React from "react";
 export type SidebarItem = {
   href: string;
   label: string;
-  icon: React.ReactNode;
+  icon?: React.ReactNode;
+  children?: SidebarItem[];
 };
 
 type SidebarProps = {
@@ -31,6 +32,15 @@ function ItemContainer({ active, children }: { active: boolean; children: React.
 
 export default function Sidebar({ items, className = "" }: SidebarProps) {
   const pathname = usePathname();
+  const [openGroup, setOpenGroup] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    // Auto-open the parent group if current path matches
+    const parentWithMatch = items.find((it) => Array.isArray(it.children) && pathname.startsWith(it.href));
+    if (parentWithMatch) {
+      setOpenGroup(parentWithMatch.href);
+    }
+  }, [pathname, items]);
 
   return (
     <aside className={`flex h-dvh w-64 flex-col bg-[#0b213f] ${className}`}>
@@ -40,11 +50,59 @@ export default function Sidebar({ items, className = "" }: SidebarProps) {
       </div>
       <nav className="mt-3 flex-1 space-y-2 px-4">
         {items.map((item, idx) => {
+          const hasChildren = Array.isArray(item.children) && item.children.length > 0;
+          const parentActive = pathname.startsWith(item.href);
+          const isOpen = openGroup === item.href || parentActive;
+
+          if (hasChildren) {
+            return (
+              <div key={item.href ?? idx}>
+                <button
+                  type="button"
+                  onClick={() => setOpenGroup((prev) => (prev === item.href ? null : item.href))}
+                  className="w-full text-left"
+                >
+                  <ItemContainer active={parentActive}>
+                    {item.icon ? <span className="shrink-0 text-white/80">{item.icon}</span> : null}
+                    <span className="truncate">{item.label}</span>
+                    <span className="ml-auto inline-flex items-center justify-center text-white/70">
+                      <svg
+                        className={`h-4 w-4 transform transition-transform ${isOpen ? "rotate-90" : "rotate-0"}`}
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        aria-hidden
+                      >
+                        <path d="M9 18l6-6-6-6" />
+                      </svg>
+                    </span>
+                  </ItemContainer>
+                </button>
+                {isOpen ? (
+                  <div className="mt-1 space-y-1 pl-6">
+                    {item.children!.map((child, cidx) => {
+                      const childActive = pathname === child.href;
+                      return (
+                        <Link key={child.href ?? cidx} href={child.href}>
+                          <ItemContainer active={childActive}>
+                            {child.icon ? <span className="shrink-0 text-white/80">{child.icon}</span> : null}
+                            <span className="truncate">{child.label}</span>
+                          </ItemContainer>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            );
+          }
+
           const active = pathname === item.href;
           return (
             <Link key={item.href ?? idx} href={item.href}>
               <ItemContainer key={item.label ?? idx} active={active}>
-                <span className="shrink-0 text-white/80">{item.icon}</span>
+                {item.icon ? <span className="shrink-0 text-white/80">{item.icon}</span> : null}
                 <span className="truncate">{item.label}</span>
               </ItemContainer>
             </Link>

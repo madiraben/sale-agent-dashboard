@@ -14,11 +14,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const items: SidebarItem[] = [
     {  href: "/dashboard", label: "Dashboard", icon: <MdDashboard />   },
     {  href: "/dashboard/sales", label: "Sales", icon:< MdShoppingCart/> },
-    {  href: "/dashboard/products", label: "Products", icon: <MdInventory /> },
+    {  href: "/dashboard/products", label: "Products", icon: <MdInventory />, children: [
+      { href: "/dashboard/products/products", label: "Products" },
+      { href: "/dashboard/products/categories", label: "Product Categories" },
+    ] },
     {  href: "/dashboard/add-ai-knowleadge", label: "AI Knowledge", icon: <MdBook /> },
     {  href: "/dashboard/customers", label: "Customers", icon: <MdPeople /> },
     {  href: "/dashboard/play-ground", label: "Playground", icon: <MdAssessment/> },
-    {  href: "/dashboard/settings", label: "Settings", icon: <MdSettings /> },
+    {  href: "/dashboard/setting", label: "Settings", icon: <MdSettings /> },
   ];
 
   return (

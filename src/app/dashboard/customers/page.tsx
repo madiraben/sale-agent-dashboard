@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { customers, orders, currency } from "@/data/mock";
+import SearchInput from "@/components/ui/search-input";
 
 export default function Customers() {
   const rows = useMemo(() => {
@@ -27,18 +28,7 @@ export default function Customers() {
           <span className="font-medium text-gray-900">List</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="relative hidden md:block">
-            <input
-              placeholder="Search"
-              className="w-56 rounded-full border border-gray-300 bg-white px-9 py-2 text-sm outline-none placeholder:text-gray-400 focus:border-[#3B82F6]"
-            />
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <circle cx="11" cy="11" r="8" />
-                <path d="M21 21l-4.3-4.3" />
-              </svg>
-            </span>
-          </div>
+          <SearchInput className="hidden md:block" />
           <button className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M3 6h18M6 12h12M10 18h4" />
