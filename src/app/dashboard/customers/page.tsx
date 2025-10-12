@@ -2,18 +2,33 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
-import { customers, orders, currency } from "@/data/mock";
+import { currency } from "@/data/mock";
 import SearchInput from "@/components/ui/search-input";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import React from "react";
 
 export default function Customers() {
-  const rows = useMemo(() => {
-    return customers.map((c) => {
-      const cs = orders.filter((o) => o.customerId === c.id);
-      const total = cs.reduce((s, o) => s + o.total, 0);
-      const last = cs.reduce<string | null>((acc, o) => (acc && acc > o.date ? acc : o.date), null);
-      return { ...c, ordersCount: cs.length, total, lastDate: last };
-    });
+  const supabase = React.useMemo(() => createSupabaseBrowserClient(), []);
+  const [q, setQ] = React.useState("");
+  const [rows, setRows] = React.useState<Array<{ id: string; name: string; phone: string; email?: string; address?: string | null; last_date: string | null; orders_count: number; total: number }>>([]);
+
+  React.useEffect(() => {
+    // Load customers with order aggregates from view
+    async function load() {
+      const { data } = await supabase
+        .from("customers_with_stats")
+        .select("id,name,phone,email,address,last_date,orders_count,total")
+        .order("name", { ascending: true });
+      if (data) setRows(data as any);
+    }
+    load();
   }, []);
+
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return rows;
+    return rows.filter((r) => [r.name, r.phone, r.email ?? "", r.address ?? ""].some((v) => v.toLowerCase().includes(s)));
+  }, [q, rows]);
 
   return (
     <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5 md:p-6">
@@ -28,7 +43,7 @@ export default function Customers() {
           <span className="font-medium text-gray-900">List</span>
         </div>
         <div className="flex items-center gap-2">
-          <SearchInput className="hidden md:block" />
+          <SearchInput className="hidden md:block" value={q} onChange={(e) => setQ(e.target.value)} />
           <button className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M3 6h18M6 12h12M10 18h4" />
@@ -52,6 +67,7 @@ export default function Customers() {
               <th className="px-4 py-3 w-14">No.</th>
               <th className="px-4 py-3">Customer</th>
               <th className="px-4 py-3">Contact</th>
+              <th className="px-4 py-3">Address</th>
               <th className="px-4 py-3">Last order</th>
               <th className="px-4 py-3">Orders</th>
               <th className="px-4 py-3">Total</th>
@@ -59,7 +75,7 @@ export default function Customers() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {rows.map((r, idx) => (
+            {filtered.map((r, idx) => (
               <tr key={r.id} className="hover:bg-gray-50">
                 <td className="px-4 py-3 text-gray-700">{idx + 1}.</td>
                 <td className="px-4 py-3">
@@ -80,8 +96,9 @@ export default function Customers() {
                   <div>{r.phone}</div>
                   <div className="text-xs text-gray-500">{r.email ?? "-"}</div>
                 </td>
-                <td className="px-4 py-3 text-gray-700">{r.lastDate ?? "-"}</td>
-                <td className="px-4 py-3">{r.ordersCount}</td>
+                <td className="px-4 py-3 text-gray-700">{r.address ?? "-"}</td>
+                <td className="px-4 py-3 text-gray-700">{r.last_date ?? "-"}</td>
+                <td className="px-4 py-3">{r.orders_count}</td>
                 <td className="px-4 py-3">{currency(r.total)}</td>
                 <td className="px-4 py-3">
                   <button className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-100">

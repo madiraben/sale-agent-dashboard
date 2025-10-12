@@ -4,26 +4,39 @@ import React from "react";
 import Button from "@/components/ui/button";
 import TextField from "@/components/ui/text-field";
 import SideDrawer from "@/components/ui/side-drawer";
-import ImageUploader from "@/components/ui/image-uploader";
 import SearchInput from "@/components/ui/search-input";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import TextArea from "@/components/ui/text-area";
+import ConfirmDialog from "@/components/ui/confirm-dialog";
 
-type Category = {
-  id: string;
-  name: string;
-  icon?: React.ReactNode;
-  productCount: number;
-  updatedAt: string;
-};
-
-const mockCategories: Category[] = [
-  { id: "1", name: "Alcohol", productCount: 5, updatedAt: "29-Sep-2025" },
-  { id: "2", name: "Beverage", productCount: 12, updatedAt: "29-Sep-2025" },
-  { id: "3", name: "Food-Meat", productCount: 1, updatedAt: "29-Sep-2025" },
-];
+type Category = { id: string; name: string; updated_at: string };
 
 export default function ProductCategoriesPage() {
-  const [categories] = React.useState<Category[]>(mockCategories);
+  const supabase = React.useMemo(() => createSupabaseBrowserClient(), []);
+  const [q, setQ] = React.useState("");
+  const [categories, setCategories] = React.useState<Category[]>([]);
   const [openAdd, setOpenAdd] = React.useState(false);
+  const [openEdit, setOpenEdit] = React.useState<string | null>(null);
+  const [deleteId, setDeleteId] = React.useState<string | null>(null);
+  const [deleting, setDeleting] = React.useState(false);
+
+  async function loadCategories() {
+    const { data } = await supabase
+      .from("product_categories")
+      .select("id,name,updated_at")
+      .order("name", { ascending: true });
+    setCategories((data as any) ?? []);
+  }
+
+  React.useEffect(() => {
+    loadCategories();
+  }, []);
+
+  const filtered = React.useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return categories;
+    return categories.filter((c) => c.name.toLowerCase().includes(s));
+  }, [q, categories]);
 
   return (
     <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5 md:p-6">
@@ -37,7 +50,7 @@ export default function ProductCategoriesPage() {
           <span className="font-medium text-gray-900">Categories</span>
         </div>
         <div className="flex items-center gap-2">
-          <SearchInput className="hidden md:block" />
+          <SearchInput className="hidden md:block" value={q} onChange={(e) => setQ(e.target.value)} />
           <button className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M3 6h18M6 12h12M10 18h4" />
@@ -65,13 +78,12 @@ export default function ProductCategoriesPage() {
             <tr className="border-y border-gray-200 text-gray-600">
               <th className="px-4 py-3 w-14">No.</th>
               <th className="px-4 py-3">Name</th>
-              <th className="px-4 py-3">Products</th>
               <th className="px-4 py-3">Updated</th>
               <th className="px-4 py-3 text-right">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {categories.map((c, idx) => (
+            {filtered.map((c, idx) => (
               <tr key={c.id} className="hover:bg-gray-50">
                 <td className="px-4 py-3 text-gray-700">{idx + 1}.</td>
                 <td className="px-4 py-3 text-gray-800">
@@ -79,14 +91,13 @@ export default function ProductCategoriesPage() {
                     <span className="text-gray-700">{c.name}</span>
                   </div>
                 </td>
-                <td className="px-4 py-3">{c.productCount}</td>
-                <td className="px-4 py-3">{c.updatedAt}</td>
+                <td className="px-4 py-3">{new Date(c.updated_at).toLocaleDateString()}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-2">
-                    <button className="inline-flex h-8 items-center justify-center rounded-lg border border-gray-300 px-3 text-sm text-gray-700 hover:bg-gray-50">
+                    <button className="inline-flex h-8 items-center justify-center rounded-lg border border-gray-300 px-3 text-sm text-gray-700 hover:bg-gray-50" onClick={() => setOpenEdit(c.id)}>
                       Edit
                     </button>
-                    <button className="inline-flex h-8 items-center justify-center rounded-lg border border-red-200 px-3 text-sm text-red-600 hover:bg-red-50">
+                    <button className="inline-flex h-8 items-center justify-center rounded-lg border border-red-200 px-3 text-sm text-red-600 hover:bg-red-50" onClick={() => setDeleteId(c.id)}>
                       Delete
                     </button>
                     <button className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-100">
@@ -104,17 +115,37 @@ export default function ProductCategoriesPage() {
         </table>
       </div>
 
-      {openAdd ? <AddCategoryDrawer onClose={() => setOpenAdd(false)} /> : null}
+      {openAdd ? <AddCategoryDrawer onClose={() => { setOpenAdd(false); loadCategories(); }} /> : null}
+      {openEdit ? <EditCategoryDrawer id={openEdit} onClose={() => { setOpenEdit(null); loadCategories(); }} /> : null}
+      <ConfirmDialog
+        open={deleteId !== null}
+        title="Delete Category"
+        description="This action cannot be undone. Are you sure you want to delete this category?"
+        confirmText="Delete"
+        destructive
+        busy={deleting}
+        onCancel={() => setDeleteId(null)}
+        onConfirm={async () => {
+          if (!deleteId) return;
+          setDeleting(true);
+          await supabase.from("product_categories").delete().eq("id", deleteId);
+          setDeleting(false);
+          setDeleteId(null);
+          loadCategories();
+        }}
+      />
     </div>
   );
 }
 
 function AddCategoryDrawer({ onClose }: { onClose: () => void }) {
+  const supabase = React.useMemo(() => createSupabaseBrowserClient(), []);
   const [name, setName] = React.useState("");
-  const [file, setFile] = React.useState<File | null>(null);
+  const [description, setDescription] = React.useState("");
 
-  function onSave() {
-    // For now just close. Wire to API later.
+  async function onSave() {
+    if (!name.trim()) return onClose();
+    await supabase.from("product_categories").insert({ name: name.trim(), description: description.trim() || null });
     onClose();
   }
 
@@ -130,14 +161,78 @@ function AddCategoryDrawer({ onClose }: { onClose: () => void }) {
         </div>
       )}
     >
-      <div className="grid place-items-center">
-        <ImageUploader value={file} onChange={setFile} circle size={160} />
-      </div>
-      <div className="mt-6">
+      <div className="mt-2">
         <TextField
           placeholder="Category Name *"
           value={name}
           onChange={(e) => setName(e.target.value)}
+        />
+      </div>
+      <div className="mt-4">
+        <TextArea
+          label="Description"
+          rows={4}
+          placeholder="Describe this category (optional)"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
+      </div>
+    </SideDrawer>
+  );
+}
+
+function EditCategoryDrawer({ id, onClose }: { id: string; onClose: () => void }) {
+  const supabase = React.useMemo(() => createSupabaseBrowserClient(), []);
+  const [name, setName] = React.useState("");
+  const [description, setDescription] = React.useState("");
+
+  React.useEffect(() => {
+    supabase
+      .from("product_categories")
+      .select("id,name,description")
+      .eq("id", id)
+      .single()
+      .then(({ data }) => {
+        setName((data as any)?.name ?? "");
+        setDescription((data as any)?.description ?? "");
+      });
+  }, [id]);
+
+  async function onSave() {
+    if (!name.trim()) return onClose();
+    await supabase
+      .from("product_categories")
+      .update({ name: name.trim(), description: description.trim() || null })
+      .eq("id", id);
+    onClose();
+  }
+
+  return (
+    <SideDrawer
+      open
+      onClose={onClose}
+      title="Edit Category"
+      footer={(
+        <div className="flex items-center justify-end gap-3">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={onSave}>Save</Button>
+        </div>
+      )}
+    >
+      <div className="mt-2">
+        <TextField
+          placeholder="Category Name *"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+      </div>
+      <div className="mt-4">
+        <TextArea
+          label="Description"
+          rows={4}
+          placeholder="Describe this category (optional)"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
         />
       </div>
     </SideDrawer>

@@ -1,5 +1,24 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Supabase setup
+
+1) Configure env (already present):
+
+```
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+```
+
+2) Apply SQL (either via Supabase SQL Editor or CLI):
+
+```sql
+-- open `supabase.sql` from project root and run its contents
+```
+
+This creates the `products` table, `product_categories` table, `customers`, `orders`, and `order_items` with RLS for authenticated users, plus a public Storage bucket `product-images`.
+
+3) Ensure Authentication is enabled in your Supabase project and you sign in via the app.
+
 ## Getting Started
 
 First, run the development server:

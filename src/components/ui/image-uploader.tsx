@@ -6,11 +6,14 @@ type ImageUploaderProps = {
   value?: File | null;
   onChange?: (file: File | null) => void;
   circle?: boolean;
-  size?: number; // diameter in px if circle, width if square
+  size?: number; // diameter in px if circle, width if square (fallback)
+  widthPx?: number; // width for rectangular (when circle is false)
+  heightPx?: number; // height for rectangular (when circle is false)
   placeholder?: React.ReactNode;
+  initialUrl?: string; // when provided, show this image when no file is selected
 };
 
-export default function ImageUploader({ value, onChange, circle = true, size = 160, placeholder }: ImageUploaderProps) {
+export default function ImageUploader({ value, onChange, circle = true, size = 160, widthPx, heightPx, placeholder, initialUrl }: ImageUploaderProps) {
   const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -34,9 +37,12 @@ export default function ImageUploader({ value, onChange, circle = true, size = 1
     onChange?.(f);
   }
 
+  const resolvedWidth = !circle && typeof widthPx === "number" ? widthPx : size;
+  const resolvedHeight = !circle && typeof heightPx === "number" ? heightPx : size;
+
   const containerStyle: React.CSSProperties = circle
     ? { width: size, height: size, borderRadius: "9999px" }
-    : { width: size, height: size };
+    : { width: resolvedWidth, height: resolvedHeight };
 
   return (
     <div className="inline-grid" style={{ gridTemplateColumns: "1fr" }}>
@@ -48,6 +54,8 @@ export default function ImageUploader({ value, onChange, circle = true, size = 1
       >
         {previewUrl ? (
           <img src={previewUrl} alt="preview" className="h-full w-full object-cover" style={circle ? { borderRadius: "9999px" } : undefined} />
+        ) : initialUrl ? (
+          <img src={initialUrl} alt="current" className="h-full w-full object-cover" style={circle ? { borderRadius: "9999px" } : undefined} />
         ) : (
           <div className="text-center text-gray-500">
             {placeholder ?? (

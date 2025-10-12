@@ -1,5 +1,7 @@
 import Sidebar, { type SidebarItem } from "@/components/sidebar";
 import Topbar from "@/components/topbar";
+import { redirect } from "next/navigation";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { 
   MdDashboard, 
   MdShoppingCart, 
@@ -10,7 +12,14 @@ import {
   MdSettings 
 } from "react-icons/md";
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session) {
+    redirect("/login");
+  }
   const items: SidebarItem[] = [
     {  href: "/dashboard", label: "Dashboard", icon: <MdDashboard />   },
     {  href: "/dashboard/sales", label: "Sales", icon:< MdShoppingCart/> },

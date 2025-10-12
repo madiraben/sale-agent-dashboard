@@ -1,21 +1,56 @@
 "use client";
 
 import Image from "next/image";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import AuthCard from "@/components/auth-card";
 import LanguageSwitcher from "@/components/language-switcher";
 import TextField from "@/components/ui/text-field";
 import PasswordField from "@/components/ui/password-field";
 import Button from "@/components/ui/button";
-import { redirect } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export default function Page() {
   const [selectedLang, setSelectedLang] = useState<"EN" | "KM">("EN");
+  const [phoneOrEmail, setPhoneOrEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+  const supabase = createSupabaseBrowserClient();
 
+  useEffect(() => {
+    // If already logged in, redirect to dashboard
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) router.replace("/dashboard");
+    });
+    // Also listen to auth state changes for instant redirect
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) router.replace("/dashboard");
+    });
+    return () => {
+      sub.subscription.unsubscribe();
+    };
+  }, []);
 
-
-  const handleLogin = () => {
-    redirect("/dashboard");
+  const handleLogin = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      // Support either email or phone: Supabase's email/password is standard.
+      // If phone number is given, you likely want OTP; for simplicity we treat input as email.
+      const { error } = await supabase.auth.signInWithPassword({
+        email: phoneOrEmail,
+        password,
+      });
+      if (error) {
+        setError(error.message);
+        return;
+      }
+      router.replace("/dashboard");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -41,25 +76,29 @@ export default function Page() {
           <h1 className="mb-8 text-center text-2xl font-semibold text-gray-800">Sign in to your account</h1>
 
           <TextField
-            label="Phone Number*"
-            type="tel"
-            inputMode="tel"
-            placeholder="0889566929"
-            defaultValue="0889566929"
-            autoComplete="tel"
+            label="Email*"
+            type="email"
+            inputMode="email"
+            placeholder="you@example.com"
+            value={phoneOrEmail}
+            onChange={(e) => setPhoneOrEmail(e.target.value)}
+            autoComplete="email"
             rightIcon={
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d="M15.3 14.4c-1.8 1.1-4.4-1.5-5.5-3.3-1.1-1.8-2.7-4.4-1.6-5.5l1.5-1.5c.4-.4.4-1.1 0-1.6L8 1.3C7.6.9 6.9.9 6.5 1.3L4.4 3.4c-2 2 0 6 3 10s8 5 10 3l2.1-2.1c.4-.4.4-1.1 0-1.6l-1.2-1.2c-.4-.4-1.1-.4-1.6 0l-1.4 1.4z" />
+                <path d="M4 4h16v16H4z" />
+                <path d="M4 6l8 6 8-6" />
               </svg>
             }
           />
 
           <div className="mt-5" />
 
-          <PasswordField label="Password*" placeholder="••••••••" defaultValue="123456" autoComplete="current-password" />
+          <PasswordField label="Password*" placeholder="••••••••" value={password} onChange={(e) => setPassword((e.target as HTMLInputElement).value)} autoComplete="current-password" />
 
-          <Button className="mt-6" fullWidth onClick={handleLogin}>
-            Sign In
+          {error ? <div className="mt-3 text-sm text-red-600">{error}</div> : null}
+
+          <Button className="mt-6" fullWidth onClick={handleLogin} disabled={loading}>
+            {loading ? "Signing in..." : "Sign In"}
           </Button>
 
           <div className="mb-5 mt-2 text-center text-sm text-gray-500">Don't have an account yet?</div>

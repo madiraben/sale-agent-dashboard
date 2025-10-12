@@ -34,6 +34,6 @@ export const products: Product[] = [
   { id: "p4", name: "Red Wine 750ml", sku: "RW-750", price: 14.99, stock: 8, category: "Alcohol", description: "Dry red wine, 750ml bottle." },
 ];
 
-export const currency = (n: number) => n.toLocaleString(undefined, { style: "currency", currency: "USD" });
+export const currency = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 
 

@@ -2,11 +2,12 @@
 
 import React from "react";
 import Link from "next/link";
-import { customers, orders, products, currency } from "@/data/mock";
+import { currency } from "@/data/mock";
 import SearchInput from "@/components/ui/search-input";
 import Badge from "@/components/ui/badge";
 import Modal from "@/components/ui/modal";
 import Button from "@/components/ui/button";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type Row = {
   id: string;
@@ -30,26 +31,42 @@ function statusColor(s: Row["status"]) {
 }
 
 export default function Sales() {
+  const supabase = React.useMemo(() => createSupabaseBrowserClient(), []);
   const [q, setQ] = React.useState("");
   const [selectedRow, setSelectedRow] = React.useState<Row | null>(null);
+  const [rows, setRows] = React.useState<Row[]>([]);
+  const [savingId, setSavingId] = React.useState<string | null>(null);
 
-  const rows = React.useMemo<Row[]>(() => {
-    return orders.map((o) => {
-      const c = customers.find((x) => x.id === o.customerId);
-      const mappedItems = (o.items ?? []).map((it) => {
-        const p = products.find((pp) => pp.id === it.productId);
-        return { name: p?.name ?? it.productId, qty: it.qty, price: it.price };
-      });
-      return {
+  React.useEffect(() => {
+    async function load() {
+      const { data: orders } = await supabase
+        .from("orders")
+        .select("id, customer_id, date, status, total, customers(name)")
+        .order("date", { ascending: false });
+      const ids = (orders as any)?.map((o: any) => o.id) ?? [];
+      let itemsByOrder: Record<string, Array<{ name: string; qty: number; price: number }>> = {};
+      if (ids.length) {
+        const { data: items } = await supabase
+          .from("order_items")
+          .select("order_id, qty, price, products(name)")
+          .in("order_id", ids);
+        for (const it of (items as any) ?? []) {
+          const arr = itemsByOrder[it.order_id] ?? (itemsByOrder[it.order_id] = []);
+          arr.push({ name: it.products?.name ?? "Unknown", qty: it.qty, price: it.price });
+        }
+      }
+      const mapped: Row[] = ((orders as any) ?? []).map((o: any) => ({
         id: o.id,
-        customerId: o.customerId,
-        customerName: c?.name ?? "Unknown",
+        customerId: o.customer_id,
+        customerName: o.customers?.name ?? "Unknown",
         date: o.date,
         total: o.total,
         status: o.status,
-        items: mappedItems,
-      };
-    });
+        items: itemsByOrder[o.id] ?? [],
+      }));
+      setRows(mapped);
+    }
+    load();
   }, []);
 
   const filtered = React.useMemo(() => {
@@ -61,6 +78,33 @@ export default function Sales() {
   }, [q, rows]);
 
   const grandTotal = React.useMemo(() => filtered.reduce((sum, r) => sum + r.total, 0), [filtered]);
+
+  async function setOrderStatus(orderId: string, next: Row["status"]) {
+    try {
+      setSavingId(orderId);
+      // when accepting, call RPC to decrement stock transactionally
+      let error: any = null;
+      if (next === "paid") {
+        const { error: rpcError } = await (supabase as any).rpc("accept_order", { p_order_id: orderId });
+        error = rpcError;
+      } else {
+        const res = await supabase.from("orders").update({ status: next }).eq("id", orderId);
+        error = res.error;
+      }
+      // optimistic UI only after success to avoid stock mismatch
+      if (!error) {
+        setRows((prev) => prev.map((r) => (r.id === orderId ? { ...r, status: next } : r)));
+        if (selectedRow?.id === orderId) {
+          setSelectedRow({ ...selectedRow, status: next });
+        }
+      }
+      if (error) {
+        throw error;
+      }
+    } finally {
+      setSavingId(null);
+    }
+  }
 
   return (
     <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5 md:p-6">
@@ -75,6 +119,9 @@ export default function Sales() {
         </div>
         <div className="flex items-center gap-2">
           <SearchInput className="hidden md:block" placeholder="Search orders" value={q} onChange={(e) => setQ(e.target.value)} />
+          <Link href="/dashboard/sales/new">
+            <Button>New Order</Button>
+          </Link>
         </div>
       </div>
 
@@ -128,20 +175,24 @@ export default function Sales() {
                         <Button
                           variant="outline"
                           className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                          disabled={savingId === r.id}
                           onClick={(e) => {
                             e.stopPropagation();
+                            setOrderStatus(r.id, "paid");
                           }}
                         >
-                          Accept
+                          {savingId === r.id ? "Saving..." : "Accept"}
                         </Button>
                         <Button
                           variant="outline"
                           className="border-rose-200 text-rose-600 hover:bg-rose-50"
+                          disabled={savingId === r.id}
                           onClick={(e) => {
                             e.stopPropagation();
+                            setOrderStatus(r.id, "refunded");
                           }}
                         >
-                          Decline
+                          {savingId === r.id ? "Saving..." : "Decline"}
                         </Button>
                       </>
                     ) : null}
@@ -156,16 +207,19 @@ export default function Sales() {
         <OrderDetailDialog
           row={selectedRow}
           open={true}
+          busy={savingId === selectedRow.id}
           onOpenChange={(o) => {
             if (!o) setSelectedRow(null);
           }}
+          onAccept={() => setOrderStatus(selectedRow.id, "paid")}
+          onDecline={() => setOrderStatus(selectedRow.id, "refunded")}
         />
       ) : null}
     </div>
   );
 }
 
-function OrderDetailDialog({ row, open, onOpenChange }: { row: Row; open: boolean; onOpenChange: (open: boolean) => void }) {
+function OrderDetailDialog({ row, open, onOpenChange, onAccept, onDecline, busy }: { row: Row; open: boolean; onOpenChange: (open: boolean) => void; onAccept: () => void; onDecline: () => void; busy: boolean }) {
   return (
     <Modal open={open} onOpenChange={onOpenChange} title={<>Order {row.id}</>}>
       <div className="space-y-3">
@@ -210,8 +264,8 @@ function OrderDetailDialog({ row, open, onOpenChange }: { row: Row; open: boolea
         </div>
         {row.status === "pending" ? (
           <div className="mt-4 flex items-center justify-end gap-2">
-            <Button variant="outline" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50">Accept</Button>
-            <Button variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-50">Decline</Button>
+            <Button variant="outline" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50" disabled={busy} onClick={onAccept}>{busy ? "Saving..." : "Accept"}</Button>
+            <Button variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-50" disabled={busy} onClick={onDecline}>{busy ? "Saving..." : "Decline"}</Button>
           </div>
         ) : null}
       </div>

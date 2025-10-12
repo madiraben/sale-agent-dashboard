@@ -3,12 +3,21 @@
 import React from "react";
 import LanguageSwitcher from "@/components/language-switcher";
 import { FaUser, FaBell } from "react-icons/fa";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
 
 type TopbarProps = {
   title?: string;
 };
 
 export default function Topbar({ title }: TopbarProps) {
+  const supabase = createSupabaseBrowserClient();
+  const router = useRouter();
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.replace("/login");
+  };
   return (
     <header className="flex h-[80px] items-center justify-between border-b border-black/10 bg-white px-6 md:px-10">
       <div className="flex items-center gap-5">
@@ -21,6 +30,9 @@ export default function Topbar({ title }: TopbarProps) {
         <div className="scale-110">
           <LanguageSwitcher />
         </div>
+        <button onClick={handleSignOut} className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+          Sign out
+        </button>
         <IconButton aria-label="Apps">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z" />
