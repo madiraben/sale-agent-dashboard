@@ -9,6 +9,7 @@ import PasswordField from "@/components/ui/password-field";
 import Button from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import LoadingScreen from "@/components/loading-screen";
 
 export default function Page() {
   const [selectedLang, setSelectedLang] = useState<"EN" | "KM">("EN");
@@ -16,13 +17,18 @@ export default function Page() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [checkingSession, setCheckingSession] = useState(true);
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
 
   useEffect(() => {
-    // If already logged in, redirect to dashboard
+    // Gate: show loading while checking session, to avoid flashing the login form
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) router.replace("/dashboard");
+      if (data.session) {
+        router.replace("/dashboard");
+      } else {
+        setCheckingSession(false);
+      }
     });
     // Also listen to auth state changes for instant redirect
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -52,6 +58,10 @@ export default function Page() {
       setLoading(false);
     }
   };
+
+  if (checkingSession) {
+    return <LoadingScreen  />;
+  }
 
   return (
     <div className="min-h-dvh bg-[#EEF2F7]">

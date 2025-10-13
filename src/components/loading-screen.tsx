@@ -10,18 +10,18 @@ type LoadingScreenProps = {
 
 export default function LoadingScreen({
   logoSrc = "/images/logo/logo2.png",
-  backgroundClassName = "bg-[#0F1620]",
+  backgroundClassName = "bg-[#EEF2F7]",
   dotClassName = "bg-[#1E8BF7]",
   message,
 }: LoadingScreenProps) {
   return (
-    <div className={`grid min-h-dvh place-items-center ${backgroundClassName} text-white`}>
+    <div className={`grid min-h-dvh place-items-center ${backgroundClassName}`}>
       <div className="text-center">
         <div className="mx-auto flex items-center justify-center">
           <Image src={logoSrc} alt="App logo" width={120} height={120} priority />
         </div>
         {message ? (
-          <div className="mt-4 text-sm text-white/80">{message}</div>
+          <div className="mt-4 text-sm text-gray-600">{message}</div>
         ) : null}
         <div className="mt-6 flex items-center justify-center gap-2">
           <span className={`h-2 w-2 rounded-full ${dotClassName} animate-bounce`} />
