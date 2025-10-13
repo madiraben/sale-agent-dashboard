@@ -33,6 +33,13 @@ function statusColor(s: Row["status"]) {
 export default function Sales() {
   const supabase = React.useMemo(() => createSupabaseBrowserClient(), []);
   const [q, setQ] = React.useState("");
+  const debouncedSetQ = React.useMemo(() => {
+    let t: any;
+    return (v: string) => {
+      if (t) clearTimeout(t);
+      t = setTimeout(() => setQ(v), 200);
+    };
+  }, []);
   const [selectedRow, setSelectedRow] = React.useState<Row | null>(null);
   const [rows, setRows] = React.useState<Row[]>([]);
   const [savingId, setSavingId] = React.useState<string | null>(null);
@@ -118,7 +125,7 @@ export default function Sales() {
           <span className="font-medium text-gray-900">All Orders</span>
         </div>
         <div className="flex items-center gap-2">
-          <SearchInput className="hidden md:block" placeholder="Search orders" value={q} onChange={(e) => setQ(e.target.value)} />
+          <SearchInput className="hidden md:block" placeholder="Search orders" value={q} onChange={(e) => debouncedSetQ(e.target.value)} />
           <Link href="/dashboard/sales/new">
             <Button>New Order</Button>
           </Link>

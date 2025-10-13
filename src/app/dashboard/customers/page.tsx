@@ -10,6 +10,13 @@ import React from "react";
 export default function Customers() {
   const supabase = React.useMemo(() => createSupabaseBrowserClient(), []);
   const [q, setQ] = React.useState("");
+  const debouncedSetQ = React.useMemo(() => {
+    let t: any;
+    return (v: string) => {
+      if (t) clearTimeout(t);
+      t = setTimeout(() => setQ(v), 200);
+    };
+  }, []);
   const [rows, setRows] = React.useState<Array<{ id: string; name: string; phone: string; email?: string; address?: string | null; last_date: string | null; orders_count: number; total: number }>>([]);
 
   React.useEffect(() => {
@@ -43,7 +50,7 @@ export default function Customers() {
           <span className="font-medium text-gray-900">List</span>
         </div>
         <div className="flex items-center gap-2">
-          <SearchInput className="hidden md:block" value={q} onChange={(e) => setQ(e.target.value)} />
+          <SearchInput className="hidden md:block" value={q} onChange={(e) => debouncedSetQ(e.target.value)} />
           <button className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M3 6h18M6 12h12M10 18h4" />
