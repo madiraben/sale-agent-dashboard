@@ -21,17 +21,29 @@ export default function Playground() {
     const user: Msg = { id: crypto.randomUUID(), role: "user", content: text };
     setMessages((m) => [...m, user]);
 
-    // Simulate RAG response; replace with real API later
     setLoading(true);
-    setTimeout(() => {
-      const reply: Msg = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: `Echo: ${text}\n\n(This is where retrieved context and answer would appear.)`,
-      };
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [
+            { role: "system", content: "You are a helpful assistant." },
+            ...messages.map((m) => ({ role: m.role, content: m.content })),
+            { role: "user", content: text },
+          ],
+        }),
+      });
+      const data = await res.json();
+      const assistantText = res.ok ? (data?.content ?? "(no content)") : (`Error: ${data?.details || data?.error || "Unknown error"}`);
+      const reply: Msg = { id: crypto.randomUUID(), role: "assistant", content: assistantText };
       setMessages((m) => [...m, reply]);
+    } catch (e) {
+      const reply: Msg = { id: crypto.randomUUID(), role: "assistant", content: "Network error while contacting AI." };
+      setMessages((m) => [...m, reply]);
+    } finally {
       setLoading(false);
-    }, 600);
+    }
   }
 
   return (

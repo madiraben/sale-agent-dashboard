@@ -2,10 +2,8 @@
 
 import React from "react";
 import Button from "@/components/ui/button";
-import { useRouter } from "next/navigation";
 
 export default function PublicBillingPage() {
-  const router = useRouter();
   return (
     <div className="min-h-dvh bg-[#EEF2F7] p-6 md:p-10">
       <div className="mx-auto max-w-4xl">

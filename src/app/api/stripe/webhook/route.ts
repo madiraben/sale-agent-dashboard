@@ -23,8 +23,23 @@ export async function POST(req: NextRequest) {
 
   async function activate(sub: Stripe.Subscription) {
     const customerId = sub.customer as string;
-    const currentPeriodEnd = new Date(sub.current_period_end * 1000).toISOString();
-    const plan = (sub.items.data[0]?.price?.nickname || sub.items.data[0]?.price?.id) ?? "pro";
+    // Some Stripe TS versions don't expose current_period_end on the type - access via any
+    const currentPeriodEnd = new Date(((sub as any).current_period_end as number) * 1000).toISOString();
+    const priceId = sub.items.data[0]?.price?.id;
+    const nickname = sub.items.data[0]?.price?.nickname || "";
+    let planSlug: string = "unknown";
+    if (priceId) {
+      if (process.env.STRIPE_PRICE_MONTHLY && priceId === process.env.STRIPE_PRICE_MONTHLY) planSlug = "monthly";
+      else if (process.env.STRIPE_PRICE_QUARTERLY && priceId === process.env.STRIPE_PRICE_QUARTERLY) planSlug = "quarterly";
+      else if (process.env.STRIPE_PRICE_YEARLY && priceId === process.env.STRIPE_PRICE_YEARLY) planSlug = "yearly";
+    }
+    if (planSlug === "unknown" && nickname) {
+      const n = nickname.toLowerCase();
+      if (n.includes("month")) planSlug = "monthly";
+      else if (n.includes("quarter") || n.includes("3")) planSlug = "quarterly";
+      else if (n.includes("year") || n.includes("annual")) planSlug = "yearly";
+    }
+    const plan = planSlug !== "unknown" ? planSlug : (nickname || priceId || "pro");
     await admin
       .from("tenants")
       .update({
@@ -79,8 +94,9 @@ export async function POST(req: NextRequest) {
       }
       case "invoice.paid": {
         const inv = evt.data.object as Stripe.Invoice;
-        if (inv.subscription) {
-          const sub = await stripe.subscriptions.retrieve(inv.subscription as string);
+        const subscriptionId = (inv as any).subscription as string | null;
+        if (subscriptionId) {
+          const sub = await stripe.subscriptions.retrieve(subscriptionId);
           await activate(sub);
         }
         break;
