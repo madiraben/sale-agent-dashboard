@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# google cloud
+white-fiber-470711-s7-efbed390336b.json
