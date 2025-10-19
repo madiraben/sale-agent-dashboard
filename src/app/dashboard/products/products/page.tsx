@@ -195,6 +195,7 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
   const [imageFile, setImageFile] = React.useState<File | null>(null);
   const [imageWidth, setImageWidth] = React.useState<string>("");
   const [imageHeight, setImageHeight] = React.useState<string>("");
+  const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
     if (!editing) return;
@@ -224,7 +225,9 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
 
   async function onSave() {
     if (!name || !sku) return onClose();
+    setSaving(true);
     if (mode === "add") {
+      // 1) Insert base fields
       const { data: inserted, error } = await supabase
         .from("products")
         .insert({ name, sku, category_id: categoryId || null, price: Number(price || 0), stock: Number(stock || 0), description })
@@ -235,7 +238,86 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
         if (publicUrl) {
           await supabase.from("products").update({ image_url: publicUrl }).eq("id", inserted.id);
         }
+
+        // 2) Build embedding payload
+        // Convert image file to base64 if exists
+        try {
+          let imageBase64 = null;
+          let imageMimeType = null;
+          
+          if (imageFile) {
+            console.log("Converting image to base64...", imageFile.name, imageFile.type);
+            // Convert File to base64 using browser FileReader
+            imageBase64 = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => {
+                const result = reader.result as string;
+                // Remove data URL prefix (e.g., "data:image/png;base64,")
+                const base64 = result.split(",")[1];
+                resolve(base64);
+              };
+              reader.onerror = reject;
+              reader.readAsDataURL(imageFile);
+            });
+            imageMimeType = imageFile.type || "image/jpeg";
+            console.log("✅ Image converted to base64, length:", imageBase64.length);
+          }
+
+          console.log("Calling embedding API...");
+          const payload = {
+            text: description ? `${name}. ${description}` : name,
+            ...(imageBase64 ? { imageBase64, imageMimeType } : {}),
+          };
+          console.log("Payload:", { ...payload, imageBase64: imageBase64 ? `${imageBase64.substring(0, 50)}...` : null });
+
+          const res = await fetch("/api/embeddings/multimodal", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const data = await res.json();
+          console.log("API response:", res.status, data);
+          
+          if (res.ok) {
+            // Store embeddings: text for main RAG search, image separately, and full response for metadata
+            const updateData: any = {};
+            
+            if (data.textEmbedding) {
+              updateData.embedding = data.textEmbedding;  // Main embedding for RAG
+              console.log("✅ Text embedding:", data.textEmbedding.length, "dimensions");
+            }
+            
+            if (data.imageEmbedding) {
+              updateData.image_embedding = data.imageEmbedding;  // For visual search
+              console.log("✅ Image embedding:", data.imageEmbedding.length, "dimensions");
+            }
+            
+            // Store full response for debugging/analysis
+            updateData.embedding_metadata = {
+              usedRegion: data.usedRegion,
+              hasText: !!data.textEmbedding,
+              hasImage: !!data.imageEmbedding,
+              createdAt: new Date().toISOString(),
+            };
+            
+            if (Object.keys(updateData).length > 1) {  // More than just metadata
+              const { error } = await supabase.from("products").update(updateData).eq("id", inserted.id);
+              if (error) {
+                console.error("❌ Supabase update error:", error);
+              } else {
+                console.log("✅ Embeddings stored successfully in Supabase");
+              }
+            } else {
+              console.warn("⚠️ No embedding vectors in response");
+            }
+          } else {
+            console.error("❌ Embedding API error:", data);
+          }
+        } catch (err) {
+          console.error("❌ Embedding fetch failed:", err);
+        }
       }
+      setSaving(false);
       onClose();
       return;
     }
@@ -245,9 +327,31 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
         .from("products")
         .update({ name, sku, category_id: categoryId || null, price: Number(price || 0), stock: Number(stock || 0), description, image_url: publicUrl ?? editing.image_url })
         .eq("id", editing.id);
+
+      // regenerate embedding if text or image changed
+      const changedText = (editing.description ?? "") !== (description ?? "") || (editing.name ?? "") !== (name ?? "");
+      const changedImage = (publicUrl ?? editing.image_url) !== editing.image_url;
+      if (changedText || changedImage) {
+        try {
+          const res = await fetch("/api/embeddings/multimodal", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              text: description ? `${name}. ${description}` : name,
+              ...((publicUrl ?? editing.image_url) ? { imageUrl: (publicUrl ?? editing.image_url)! } : {}),
+            }),
+          });
+          const data = await res.json();
+          if (res.ok) {
+            await supabase.from("products").update({ embedding: data }).eq("id", editing.id);
+          }
+        } catch {}
+      }
+      setSaving(false);
       onClose();
       return;
     }
+    setSaving(false);
     onClose();
   }
 
@@ -258,8 +362,8 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
       title={mode === "add" ? "Add Product" : "Edit Product"}
       footer={(
         <div className="flex items-center justify-end gap-3">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={onSave}>Save</Button>
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button onClick={onSave} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
         </div>
       )}
     >

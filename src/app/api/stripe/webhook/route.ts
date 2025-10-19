@@ -108,6 +108,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true });
 }
 
-export const config = { api: { bodyParser: false } } as any;
+// Next.js App Router does not support exporting a `config` for route handlers.
+// Raw body is obtained via req.text() above for Stripe signature verification.
 
 

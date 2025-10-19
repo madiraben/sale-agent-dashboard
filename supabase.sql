@@ -18,9 +18,20 @@ create table if not exists public.products (
   category_id uuid references public.product_categories(id) on delete set null,
   description text,
   image_url text,
+  embedding vector(1408),  -- Main embedding for RAG similarity search (text-based)
+  image_embedding vector(1408),  -- Optional: separate image embedding for visual search
+  embedding_metadata jsonb,  -- Store full API response for debugging/analysis
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Create vector index for fast similarity search (HNSW index)
+-- This enables efficient nearest neighbor search for RAG
+create index if not exists products_embedding_idx on public.products 
+using hnsw (embedding vector_cosine_ops);
+
+create index if not exists products_image_embedding_idx on public.products 
+using hnsw (image_embedding vector_cosine_ops);
 
 -- Trigger to update updated_at
 create or replace function public.set_updated_at()
