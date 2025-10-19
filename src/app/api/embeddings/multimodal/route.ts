@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "node:fs";
 import crypto from "node:crypto";
 
 type RequestBody = {
@@ -10,11 +9,14 @@ type RequestBody = {
 };
 
 async function getAccessTokenFromServiceAccount() {
-  const credsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (!credsPath) throw new Error("GOOGLE_APPLICATION_CREDENTIALS not set");
-  const raw = fs.readFileSync(credsPath, "utf8");
-  const { client_email, private_key, token_uri } = JSON.parse(raw);
-  const aud = token_uri || "https://oauth2.googleapis.com/token";
+  const client_email = process.env.GOOGLE_CLOUD_CLIENT_EMAIL;
+  const private_key = process.env.GOOGLE_CLOUD_PRIVATE_KEY?.replace(/\\n/g, "\n");
+  
+  if (!client_email || !private_key) {
+    throw new Error("GOOGLE_CLOUD_CLIENT_EMAIL and GOOGLE_CLOUD_PRIVATE_KEY must be set in environment variables");
+  }
+  
+  const aud = "https://oauth2.googleapis.com/token";
 
   const now = Math.floor(Date.now() / 1000);
   const header = { alg: "RS256", typ: "JWT" };
@@ -62,13 +64,11 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as RequestBody;
     const location = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
-
-    const credsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-    if (!credsPath) return NextResponse.json({ error: "missing_creds_path" }, { status: 500 });
-    const saRaw = fs.readFileSync(credsPath, "utf8");
-    const sa = JSON.parse(saRaw);
-    const projectId: string | undefined = sa.project_id;
-    if (!projectId) return NextResponse.json({ error: "missing_project_id_in_sa" }, { status: 500 });
+    const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
+    
+    if (!projectId) {
+      return NextResponse.json({ error: "GOOGLE_CLOUD_PROJECT_ID not set in environment" }, { status: 500 });
+    }
 
     const { accessToken } = await getAccessTokenFromServiceAccount();
 

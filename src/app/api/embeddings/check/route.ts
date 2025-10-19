@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
-import fs from "node:fs";
 import crypto from "node:crypto";
 
-async function getAccessToken(credsPath: string) {
-  const raw = fs.readFileSync(credsPath, "utf8");
-  const { client_email, private_key, token_uri } = JSON.parse(raw);
-  const aud = token_uri || "https://oauth2.googleapis.com/token";
+async function getAccessToken() {
+  const client_email = process.env.GOOGLE_CLOUD_CLIENT_EMAIL;
+  const private_key = process.env.GOOGLE_CLOUD_PRIVATE_KEY?.replace(/\\n/g, "\n");
+  
+  if (!client_email || !private_key) {
+    throw new Error("GOOGLE_CLOUD_CLIENT_EMAIL and GOOGLE_CLOUD_PRIVATE_KEY must be set");
+  }
+  
+  const aud = "https://oauth2.googleapis.com/token";
 
   const now = Math.floor(Date.now() / 1000);
   const header = { alg: "RS256", typ: "JWT" };
@@ -36,17 +40,14 @@ async function getAccessToken(credsPath: string) {
 
 export async function GET() {
   try {
-    const credsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
     const location = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
-    if (!credsPath) return NextResponse.json({ ok: false, reason: "GOOGLE_APPLICATION_CREDENTIALS not set" }, { status: 500 });
-    if (!fs.existsSync(credsPath)) return NextResponse.json({ ok: false, reason: "Credentials file not found", path: credsPath }, { status: 500 });
+    const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
+    
+    if (!projectId) {
+      return NextResponse.json({ ok: false, reason: "GOOGLE_CLOUD_PROJECT_ID not set" }, { status: 500 });
+    }
 
-    const raw = fs.readFileSync(credsPath, "utf8");
-    const sa = JSON.parse(raw);
-    const projectId = sa.project_id as string | undefined;
-    if (!projectId) return NextResponse.json({ ok: false, reason: "project_id missing in credentials" }, { status: 500 });
-
-    const token = await getAccessToken(credsPath);
+    const token = await getAccessToken();
 
     // Try to call :predict with test input to verify access
     async function tryRegion(loc: string) {
