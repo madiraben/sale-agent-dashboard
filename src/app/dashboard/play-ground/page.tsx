@@ -13,34 +13,122 @@ export default function Playground() {
   ]);
   const [input, setInput] = React.useState("");
   const [loading, setLoading] = React.useState(false);
+  const [conversationHistory, setConversationHistory] = React.useState<any[]>([]);
+
+  // Memoized message row to avoid re-rendering older messages during streaming
+  const MemoChatMessage = React.useMemo(() => React.memo(ChatMessage), []);
+
+  // Streaming performance refs
+  const abortRef = React.useRef<AbortController | null>(null);
+  const pendingChunkRef = React.useRef<string>("");
+  const rafIdRef = React.useRef<number | null>(null);
+  const lastAssistantContentRef = React.useRef<string>("");
+
+  // Cleanup on unmount
+  React.useEffect(() => {
+    return () => {
+      if (rafIdRef.current != null) cancelAnimationFrame(rafIdRef.current);
+      abortRef.current?.abort();
+    };
+  }, []);
 
   async function onSend() {
     const text = input.trim();
     if (!text) return;
     setInput("");
+
+    // Append user message
     const user: Msg = { id: crypto.randomUUID(), role: "user", content: text };
     setMessages((m) => [...m, user]);
 
+    // Cancel any in-flight request
+    if (abortRef.current) {
+      abortRef.current.abort();
+    }
+    abortRef.current = new AbortController();
+
+    // Create placeholder assistant message for streaming updates
+    const assistantId = crypto.randomUUID();
+    setMessages((m) => [...m, { id: assistantId, role: "assistant", content: "" }]);
+
+    // Reset streaming refs
+    pendingChunkRef.current = "";
+    lastAssistantContentRef.current = "";
+
     setLoading(true);
     try {
-      const res = await fetch("/api/chat", {
+      const resp = await fetch("/api/rag-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: [
-            { role: "system", content: "You are a helpful assistant." },
-            ...messages.map((m) => ({ role: m.role, content: m.content })),
-            { role: "user", content: text },
-          ],
-        }),
+        body: JSON.stringify({ query: text, conversationHistory }),
+        signal: abortRef.current.signal,
       });
-      const data = await res.json();
-      const assistantText = res.ok ? (data?.content ?? "(no content)") : (`Error: ${data?.details || data?.error || "Unknown error"}`);
-      const reply: Msg = { id: crypto.randomUUID(), role: "assistant", content: assistantText };
-      setMessages((m) => [...m, reply]);
-    } catch (e) {
-      const reply: Msg = { id: crypto.randomUUID(), role: "assistant", content: "Network error while contacting AI." };
-      setMessages((m) => [...m, reply]);
+
+      if (!resp.ok || !resp.body) {
+        let msg = "AI chat failed";
+        try { const e = await resp.json(); msg = e?.error || msg; } catch {}
+        throw new Error(msg);
+      }
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      const flush = () => {
+        const chunk = pendingChunkRef.current;
+        if (!chunk) return;
+        pendingChunkRef.current = "";
+        lastAssistantContentRef.current += chunk;
+        setMessages((m) => m.map((msg) => (msg.id === assistantId ? { ...msg, content: lastAssistantContentRef.current } : msg)));
+      };
+
+      const scheduleFlush = () => {
+        if (rafIdRef.current != null) return;
+        rafIdRef.current = requestAnimationFrame(() => {
+          rafIdRef.current = null;
+          flush();
+        });
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data:")) continue;
+          const payload = trimmed.slice(5).trim();
+          if (!payload || payload === "[DONE]") continue;
+          try {
+            const evt = JSON.parse(payload);
+            if (evt.type === "chunk" && evt.content) {
+              pendingChunkRef.current += evt.content as string;
+              scheduleFlush();
+            }
+          } catch {}
+        }
+      }
+
+      // Final flush
+      if (rafIdRef.current != null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+      flush();
+
+      const finalText = lastAssistantContentRef.current;
+      if (finalText) {
+        setConversationHistory((h) => {
+          const next = [...h, { role: "user", content: text }, { role: "assistant", content: finalText }];
+          // Keep only the last 8 entries to bound memory
+          return next.slice(-8);
+        });
+      }
+    } catch (e: any) {
+      const errorText = e?.message || "Network error while contacting AI.";
+      setMessages((m) => m.map((msg) => msg.id === assistantId ? { ...msg, content: `Error: ${errorText}` } : msg));
     } finally {
       setLoading(false);
     }
@@ -76,10 +164,12 @@ export default function Playground() {
 
       <div className="flex-1 space-y-3 overflow-y-auto rounded-xl bg-gray-50 p-4">
         {messages.map((m) => (
-          <ChatMessage key={m.id} role={m.role} content={m.content} time={m.time} />
+          <MemoChatMessage key={m.id} role={m.role} content={m.content} time={m.time} />
         ))}
-        {loading ? <ChatMessage role="assistant" content="Thinking..." /> : null}
+        {loading ? <MemoChatMessage role="assistant" content="Thinking..." /> : null}
       </div>
+
+      
 
       <div className="mt-4">
         <ChatInput value={input} onChange={setInput} onSend={onSend} disabled={loading} />

@@ -33,6 +33,27 @@ using hnsw (embedding vector_cosine_ops);
 create index if not exists products_image_embedding_idx on public.products 
 using hnsw (image_embedding vector_cosine_ops);
 
+-- Full text search support
+create extension if not exists pg_trgm;
+create extension if not exists unaccent;
+alter table public.products
+  add column if not exists search_tsv tsvector;
+update public.products
+  set search_tsv = to_tsvector('simple', unaccent(coalesce(name,'') || ' ' || coalesce(description,'')));
+create index if not exists products_tsv_idx on public.products using GIN (search_tsv);
+
+create or replace function products_tsv_trigger()
+returns trigger as $$
+begin
+  new.search_tsv := to_tsvector('simple', unaccent(coalesce(new.name,'') || ' ' || coalesce(new.description,'')));
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists trg_products_tsv on public.products;
+create trigger trg_products_tsv before insert or update on public.products
+for each row execute function products_tsv_trigger();
+
 -- Trigger to update updated_at
 create or replace function public.set_updated_at()
 returns trigger as $$

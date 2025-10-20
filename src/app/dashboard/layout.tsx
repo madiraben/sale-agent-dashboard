@@ -13,7 +13,6 @@ import {
   MdAssessment, 
   MdSettings, 
   MdPerson,
-  MdSearch 
 } from "react-icons/md";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -40,7 +39,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
     ] },
     {  href: "/dashboard/add-ai-knowleadge", label: "AI Knowledge", icon: <MdBook /> },
     {  href: "/dashboard/customers", label: "Customers", icon: <MdPeople /> },
-    {  href: "/dashboard/rag-test", label: "RAG Test", icon: <MdSearch/> },
     {  href: "/dashboard/play-ground", label: "Playground", icon: <MdAssessment/> },
     {  href: "/dashboard/profile", label: "Profile", icon: <MdPerson /> },
     {  href: "/dashboard/setting", label: "Settings", icon: <MdSettings /> },

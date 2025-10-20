@@ -143,9 +143,17 @@ export async function POST(req: NextRequest) {
       );
     }
     const first = predictions[0] || {};
+    
+    // Normalize vectors for better similarity comparisons
+    function normalizeVector(vector: number[]): number[] {
+      const magnitude = Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0));
+      return magnitude > 0 ? vector.map(val => val / magnitude) : vector;
+    }
+    
     const combined = first.embedding || first.combinedEmbedding || null;
-    const textEmbedding = first.textEmbedding || null;
-    const imageEmbedding = first.imageEmbedding || null;
+    const textEmbedding = first.textEmbedding ? normalizeVector(first.textEmbedding) : null;
+    const imageEmbedding = first.imageEmbedding ? normalizeVector(first.imageEmbedding) : null;
+    
     return NextResponse.json({ embedding: combined, textEmbedding, imageEmbedding, usedRegion });
   } catch (e: any) {
     console.error("Multimodal embedding error:", e);
