@@ -45,51 +45,50 @@ function normalizeVector(vector: number[]): number[] {
 }
 
 export async function getTextEmbedding(text: string): Promise<number[]> {
-  if (!text || !text.trim()) throw new Error("text_required");
-  const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
-  const location = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
-  if (!projectId) throw new Error("GOOGLE_CLOUD_PROJECT_ID not set in environment");
+      if (!text || !text.trim()) throw new Error("text_required");
+      const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
+      const location = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
+      if (!projectId) throw new Error("GOOGLE_CLOUD_PROJECT_ID not set in environment");
 
-  const accessToken = await getAccessTokenFromServiceAccount();
+      const accessToken = await getAccessTokenFromServiceAccount();
+      async function callForRegion(loc: string) {
+        const url = `https://aiplatform.googleapis.com/v1/projects/${projectId}/locations/${loc}/publishers/google/models/multimodalembedding@001:predict`;
+        const headers = new Headers({
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        });
+        if (projectId) headers.set("x-goog-user-project", projectId);
 
-  async function callForRegion(loc: string) {
-    const url = `https://aiplatform.googleapis.com/v1/projects/${projectId}/locations/${loc}/publishers/google/models/multimodalembedding@001:predict`;
-    const headers = new Headers({
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    });
-    headers.set("x-goog-user-project", projectId);
+        const body = { instances: [{ text }] };
+        const resp = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
+        const ct = resp.headers.get("content-type") || "";
+        const parsed = ct.includes("application/json") ? await resp.json() : await resp.text();
+        return { resp, parsed } as const;
+      }
 
-    const body = { instances: [{ text }] };
-    const resp = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
-    const ct = resp.headers.get("content-type") || "";
-    const parsed = ct.includes("application/json") ? await resp.json() : await resp.text();
-    return { resp, parsed } as const;
-  }
+      const regionsToTry = Array.from(new Set([location, "us-central1", "europe-west4"]));
+      let finalData: any = null;
+      for (const loc of regionsToTry) {
+        const { resp, parsed } = await callForRegion(loc);
+        if (resp.ok) {
+          finalData = parsed;
+          break;
+        }
+        if (resp.status !== 404) {
+          throw new Error(typeof parsed === "string" ? parsed : parsed?.error?.message || "vertex_error");
+        }
+      }
+      if (!finalData) throw new Error("model_not_found");
 
-  const regionsToTry = Array.from(new Set([location, "us-central1", "europe-west4"]));
-  let finalData: any = null;
-  for (const loc of regionsToTry) {
-    const { resp, parsed } = await callForRegion(loc);
-    if (resp.ok) {
-      finalData = parsed;
-      break;
+      const predictions = (finalData as any)?.predictions;
+      if (!Array.isArray(predictions) || predictions.length === 0) {
+        throw new Error("empty_predictions");
+      }
+      const first = predictions[0] || {};
+      const textEmbedding = first.textEmbedding ? normalizeVector(first.textEmbedding as number[]) : null;
+      if (!textEmbedding) throw new Error("no_text_embedding");
+      return textEmbedding as number[];
     }
-    if (resp.status !== 404) {
-      throw new Error(typeof parsed === "string" ? parsed : parsed?.error?.message || "vertex_error");
-    }
-  }
-  if (!finalData) throw new Error("model_not_found");
-
-  const predictions = (finalData as any)?.predictions;
-  if (!Array.isArray(predictions) || predictions.length === 0) {
-    throw new Error("empty_predictions");
-  }
-  const first = predictions[0] || {};
-  const textEmbedding = first.textEmbedding ? normalizeVector(first.textEmbedding as number[]) : null;
-  if (!textEmbedding) throw new Error("no_text_embedding");
-  return textEmbedding as number[];
-}
 
 

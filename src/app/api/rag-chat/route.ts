@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { buildRagSystemPrompt } from "@/lib/prompts/rag";
 import { getTextEmbedding } from "@/lib/embeddings";
 
 type Message = {
@@ -9,7 +10,7 @@ type Message = {
 
 export async function POST(req: NextRequest) {
   try {
-    const { query, conversationHistory = [] } = await req.json();
+    const { query, conversationHistory = [], conversationId: incomingConversationId } = await req.json();
 
     if (!query) {
       return NextResponse.json({ error: "Query is required" }, { status: 400 });
@@ -17,15 +18,62 @@ export async function POST(req: NextRequest) {
 
     console.log("🤖 RAG Chat - Processing query:", query);
 
+    // 0. Init supabase and identify user
+    const supabase = await createSupabaseServerClient();
+    const { data: userRes } = await supabase.auth.getUser();
+    const userId = userRes?.user?.id;
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Create or load conversation
+    let conversationId: string | null = null;
+    let conversationSummary: string | null = null;
+    if (incomingConversationId) {
+      const { data: conv, error: convErr } = await supabase
+        .from("chat_conversations")
+        .select("id, summary")
+        .eq("id", incomingConversationId)
+        .single();
+      if (!conv || convErr) {
+        return NextResponse.json({ error: "conversation_not_found" }, { status: 404 });
+      }
+      conversationId = conv.id;
+      conversationSummary = (conv as any)?.summary ?? null;
+    } else {
+      const { data: conv, error: convErr } = await supabase
+        .from("chat_conversations")
+        .insert({ user_id: userId, title: (query as string).slice(0, 80) })
+        .select("id, summary")
+        .single();
+      if (convErr || !conv) throw new Error("create_conversation_failed");
+      conversationId = conv.id;
+      conversationSummary = (conv as any)?.summary ?? null;
+    }
+
+    // Persist the user message immediately
+    try {
+      await supabase.from("chat_messages").insert({ conversation_id: conversationId, role: "user", content: query }).select("id").single();
+    } catch {}
+
+    // Load recent history for this conversation (server-trusted under RLS)
+    const { data: priorMessages } = await supabase
+      .from("chat_messages")
+      .select("role,content")
+      .eq("conversation_id", conversationId)
+      .order("created_at", { ascending: true })
+      .limit(50);
+
+    // Build trimmed history: summary + last 6 messages
+    const recentHistory = (priorMessages || []).slice(-6);
+    const dbHistory = recentHistory.map((m: any) => ({ role: m.role, content: m.content }));
+
     // 1. Get query embedding (direct call, avoids internal HTTP)
     const textEmbedding = await getTextEmbedding(query);
     console.log("✅ Got query embedding");
 
-    // 2. Search for relevant products using RAG
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
+    // 2. Search for relevant products using RAG under the caller's session (RLS enforced)
+    //    supabase already initialized with user session
     
     // Parallel retrieval: hybrid and vector searches together, then merge
     let products: any[] = [];
@@ -48,6 +96,7 @@ export async function POST(req: NextRequest) {
     const vectorData = (vectorResult.status === "fulfilled" && (vectorResult.value as any)?.data) || [];
 
     const all = [...(hybridData || []), ...(vectorData || [])];
+    // console.log("🔍 All products:", all);
     const byId = new Map<string, any>();
     for (const item of all) {
       if (!item) continue;
@@ -59,68 +108,44 @@ export async function POST(req: NextRequest) {
     products = Array.from(byId.values())
       .sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0))
       .slice(0, 5);
-    if (products.length === 0) {
-      const { data: allProducts } = await supabase
-        .from("products")
-        .select("id, name, description, price, image_url, embedding")
-        .not("embedding", "is", null);
-      if (allProducts && allProducts.length) {
-        products = (allProducts as any[])
-          .map((p: any) => {
-            if (!p.embedding) return null;
-            let dot = 0, a = 0, b = 0;
-            for (let i = 0; i < textEmbedding.length; i++) {
-              dot += textEmbedding[i] * p.embedding[i];
-              a += textEmbedding[i] * textEmbedding[i];
-              b += p.embedding[i] * p.embedding[i];
-            }
-            const sim = dot / (Math.sqrt(a) * Math.sqrt(b));
-            return sim > 0.1 ? { ...p, similarity: sim } : null;
-          })
-          .filter(Boolean)
-          .slice(0, 5) as any[];
-      }
-    }
-
+    // Optional fallback was removed to prevent cross-tenant leakage when RLS is misconfigured
+    console.log("🔍 Products:", products);
     // 3. Build trimmed context for OpenAI
     const context = products && products.length > 0
       ? products
-          .map((p: any, i: number) => `#${i + 1} ${p.name} - $${p.price}\nKey: ${(p.description || "").slice(0, 140)}`)
+          .map((p: any, i: number) => {
+            const categoryName = (p?.product_categories && p.product_categories?.name) || p?.category || p?.category_name || null;
+            const categoryLine = categoryName ? `\nCategory: ${categoryName}` : "";
+            const imageUrl = p?.image_url;
+            return `#${i + 1} ${p.name} - $${p.price}${categoryLine}\nKey: ${(p.description || "").slice(0, 140)}${imageUrl ? `\nImage: ${imageUrl}` : ""} ${p.sku ? `\nSKU: ${p.sku}` : ""}  ${p.stock ? `\nStock: ${p.stock}` : ""}`;
+          })
           .join("\n")
       : "No relevant products found.";
 
     // 4. Call OpenAI with RAG context
-    const trimmedHistory = conversationHistory.slice(-4);
+    // const trimmedHistory = conversationHistory.slice(-4);
     const messages: Message[] = [
       {
         role: "system",
-        content: `You are a concise product assistant. Use only the provided catalog.\nCatalog:\n${context}\nRules: reference product names and prices; keep under 160 words; do not invent details.`,
+        content: buildRagSystemPrompt(context),
       },
-      ...trimmedHistory.map((msg: any) => ({
-        role: msg.role,
-        content: msg.content,
-      })),
+      // ...(conversationSummary ? [{ role: "system", content: `Conversation summary: ${conversationSummary}` } as Message] : []),
+      // ...dbHistory as any,
+      // ...trimmedHistory.map((msg: any) => ({
+      //   role: msg.role,
+      //   content: msg.content,
+      // })),
       {
         role: "user",
         content: query,
       },
     ];
-
+    console.log("🌐 Messages:", messages);
     console.log("🌐 Calling OpenAI (streaming)...");
-    const baseUrl = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
-    const openaiResp = await fetch(`${baseUrl}/chat/completions`, {
+    const openaiResp = await fetch(process.env.OPENAI_BASE_URL + "/chat/completions", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages,
-        temperature: 0.7,
-        max_tokens: 500,
-        stream: true,
-      }),
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+      body: JSON.stringify({ model: process.env.OPENAI_MODEL, messages, temperature: 0.7, max_tokens: 500, stream: true }),
     });
 
     if (!openaiResp.ok || !openaiResp.body) {
@@ -133,10 +158,11 @@ export async function POST(req: NextRequest) {
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
+    let assistantBuffer = "";
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         // Send initial products payload
-        const initEvent = `data: ${JSON.stringify({ type: "products", products, debug: { productsFound: products.length, topSimilarity: products?.[0]?.similarity || 0, searchMethod } })}\n\n`;
+        const initEvent = `data: ${JSON.stringify({ type: "products", products, conversationId, debug: { productsFound: products.length, topSimilarity: products?.[0]?.similarity || 0, searchMethod } })}\n\n`;
         controller.enqueue(encoder.encode(initEvent));
 
         const reader = openaiResp.body!.getReader();
@@ -160,6 +186,7 @@ export async function POST(req: NextRequest) {
                 const json = JSON.parse(payload);
                 const delta = json?.choices?.[0]?.delta?.content;
                 if (typeof delta === "string" && delta.length > 0) {
+                  assistantBuffer += delta;
                   const evt = `data: ${JSON.stringify({ type: "chunk", content: delta })}\n\n`;
                   controller.enqueue(encoder.encode(evt));
                 }
@@ -172,9 +199,10 @@ export async function POST(req: NextRequest) {
         }
         read();
       },
+      cancel() {},
     });
 
-    return new Response(stream, {
+    const response = new Response(stream, {
       headers: {
         "Content-Type": "text/event-stream; charset=utf-8",
         "Cache-Control": "no-cache, no-transform",
@@ -182,6 +210,58 @@ export async function POST(req: NextRequest) {
         "X-Accel-Buffering": "no",
       },
     });
+
+    // After response is sent, persist assistant message and optionally update summary
+    response.headers; // touch to ensure variable is used
+    (async () => {
+      try {
+        // Wait briefly to allow buffer to collect during stream; then save
+        await new Promise((r) => setTimeout(r, 50));
+        if (assistantBuffer.trim().length > 0) {
+          try {
+            await supabase.from("chat_messages").insert({ conversation_id: conversationId, role: "assistant", content: assistantBuffer }).select("id").single();
+          } catch {}
+          await supabase.from("chat_conversations").update({ updated_at: new Date().toISOString() }).eq("id", conversationId);
+        }
+
+        // Lightweight summarization trigger every ~12 messages
+        const { count } = await supabase
+          .from("chat_messages")
+          .select("id", { count: "exact", head: true })
+          .eq("conversation_id", conversationId);
+        if ((count ?? 0) >= 12 && (assistantBuffer?.length ?? 0) > 0) {
+          const summaryInput = `${conversationSummary ? `Existing summary: ${conversationSummary}\n` : ""}Latest assistant reply: ${assistantBuffer}`.slice(0, 4000);
+          try {
+            const baseUrl = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
+            const sumResp = await fetch(`${baseUrl}/chat/completions`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+              },
+              body: JSON.stringify({
+                model: "gpt-4o-mini",
+                messages: [
+                  { role: "system", content: "Summarize the conversation context in ≤60 words, keep key entities and intent." },
+                  { role: "user", content: summaryInput },
+                ],
+                temperature: 0.2,
+                max_tokens: 120,
+              }),
+            });
+            const sumJson = await sumResp.json().catch(() => null);
+            const newSummary = sumJson?.choices?.[0]?.message?.content || null;
+            if (newSummary) {
+              await supabase.from("chat_conversations").update({ summary: newSummary }).eq("id", conversationId);
+            }
+          } catch {}
+        }
+      } catch (e) {
+        console.warn("post-stream-persist-failed", (e as any)?.message);
+      }
+    })();
+
+    return response;
   } catch (err: any) {
     console.error("❌ RAG chat error:", err);
     return NextResponse.json(
