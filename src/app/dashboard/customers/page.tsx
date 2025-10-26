@@ -1,41 +1,51 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
-import { currency } from "@/data/mock";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import SearchInput from "@/components/ui/search-input";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import React from "react";
+import { CustomerWithStats, Currency } from "@/types";
 
 export default function Customers() {
   const supabase = React.useMemo(() => createSupabaseBrowserClient(), []);
-  const [q, setQ] = React.useState("");
-  const debouncedSetQ = React.useMemo(() => {
-    let t: any;
-    return (v: string) => {
-      if (t) clearTimeout(t);
-      t = setTimeout(() => setQ(v), 200);
-    };
-  }, []);
-  const [rows, setRows] = React.useState<Array<{ id: string; name: string; phone: string; email?: string; address?: string | null; last_date: string | null; orders_count: number; total: number }>>([]);
+  const [query, setQuery] = useState("");
+  const [rows, setRows] = useState<CustomerWithStats[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  React.useEffect(() => {
-    // Load customers with order aggregates from view
-    async function load() {
-      const { data } = await supabase
+  const loadCustomers = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data, error: supErr } = await supabase
         .from("customers_with_stats")
         .select("id,name,phone,email,address,last_date,orders_count,total")
         .order("name", { ascending: true });
-      if (data) setRows(data as any);
+      if (supErr) throw supErr;
+      setRows((data as any) ?? []);
+    } catch (e: any) {
+      console.error("Failed to load customers", e?.message || e);
+      setError(e?.message ?? "Failed to load customers");
+    } finally {
+      setLoading(false);
     }
-    load();
-  }, []);
+  }, [supabase]);
+
+  useEffect(() => {
+    loadCustomers();
+  }, [loadCustomers]);
+
+  // Simple debounce for search input
+  useEffect(() => {
+    const t = setTimeout(() => setQuery(query.trim()), 200);
+    return () => clearTimeout(t);
+  }, [query]);
 
   const filtered = useMemo(() => {
-    const s = q.trim().toLowerCase();
+    const s = query.trim().toLowerCase();
     if (!s) return rows;
-    return rows.filter((r) => [r.name, r.phone, r.email ?? "", r.address ?? ""].some((v) => v.toLowerCase().includes(s)));
-  }, [q, rows]);
+    return rows.filter((r) => [r.name, r.phone, r.email ?? "", r.address ?? ""].some((v) => (v ?? "").toLowerCase().includes(s)));
+  }, [query, rows]);
 
   return (
     <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5 md:p-6">
@@ -50,13 +60,17 @@ export default function Customers() {
           <span className="font-medium text-gray-900">List</span>
         </div>
         <div className="flex items-center gap-2">
-          <SearchInput className="hidden md:block" value={q} onChange={(e) => debouncedSetQ(e.target.value)} />
-          <button className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50">
+          <SearchInput className="hidden md:block" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <button
+            aria-label="Refresh"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50"
+            onClick={() => loadCustomers()}
+          >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M3 6h18M6 12h12M10 18h4" />
             </svg>
           </button>
-          <button className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50">
+          <button aria-hidden className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <circle cx="12" cy="5" r="1.5" />
               <circle cx="12" cy="12" r="1.5" />
@@ -68,58 +82,64 @@ export default function Customers() {
 
       {/* Table */}
       <div className="overflow-x-auto">
-        <table className="min-w-full text-left text-sm">
-          <thead>
-            <tr className="border-y border-gray-200 text-gray-600">
-              <th className="px-4 py-3 w-14">No.</th>
-              <th className="px-4 py-3">Customer</th>
-              <th className="px-4 py-3">Contact</th>
-              <th className="px-4 py-3">Address</th>
-              <th className="px-4 py-3">Last order</th>
-              <th className="px-4 py-3">Orders</th>
-              <th className="px-4 py-3">Total</th>
-              <th className="px-4 py-3 w-8"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {filtered.map((r, idx) => (
-              <tr key={r.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3 text-gray-700">{idx + 1}.</td>
-                <td className="px-4 py-3">
-                  <Link href={`/dashboard/customers/${r.id}`} className="flex items-center gap-3">
-                    <span className="grid h-9 w-9 place-items-center rounded-full bg-gray-100 text-gray-500">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                        <circle cx="12" cy="7" r="4" />
-                      </svg>
-                    </span>
-                    <div>
-                      <div className="font-medium text-gray-900">{r.name}</div>
-                      <div className="text-xs text-gray-500">View history</div>
-                    </div>
-                  </Link>
-                </td>
-                <td className="px-4 py-3 text-gray-700">
-                  <div>{r.phone}</div>
-                  <div className="text-xs text-gray-500">{r.email ?? "-"}</div>
-                </td>
-                <td className="px-4 py-3 text-gray-700">{r.address ?? "-"}</td>
-                <td className="px-4 py-3 text-gray-700">{r.last_date ?? "-"}</td>
-                <td className="px-4 py-3">{r.orders_count}</td>
-                <td className="px-4 py-3">{currency(r.total)}</td>
-                <td className="px-4 py-3">
-                  <button className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-100">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <circle cx="12" cy="5" r="1.5" />
-                      <circle cx="12" cy="12" r="1.5" />
-                      <circle cx="12" cy="19" r="1.5" />
-                    </svg>
-                  </button>
-                </td>
+        {loading ? (
+          <div className="py-24 text-center text-sm text-gray-500">Loading customers…</div>
+        ) : error ? (
+          <div className="py-24 text-center text-sm text-red-500">{error}</div>
+        ) : (
+          <table className="min-w-full text-left text-sm">
+            <thead>
+              <tr className="border-y border-gray-200 text-gray-600">
+                <th className="px-4 py-3 w-14">No.</th>
+                <th className="px-4 py-3">Customer</th>
+                <th className="px-4 py-3">Contact</th>
+                <th className="px-4 py-3">Address</th>
+                <th className="px-4 py-3">Last order</th>
+                <th className="px-4 py-3">Orders</th>
+                <th className="px-4 py-3">Total</th>
+                <th className="px-4 py-3 w-8"></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {filtered.map((r, idx) => (
+                <tr key={r.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 text-gray-700">{idx + 1}.</td>
+                  <td className="px-4 py-3">
+                    <Link href={`/dashboard/customers/${r.id}`} className="flex items-center gap-3">
+                      <span className="grid h-9 w-9 place-items-center rounded-full bg-gray-100 text-gray-500">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                          <circle cx="12" cy="7" r="4" />
+                        </svg>
+                      </span>
+                      <div>
+                        <div className="font-medium text-gray-900">{r.name}</div>
+                        <div className="text-xs text-gray-500">View history</div>
+                      </div>
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3 text-gray-700">
+                    <div>{r.phone}</div>
+                    <div className="text-xs text-gray-500">{r.email ?? "-"}</div>
+                  </td>
+                  <td className="px-4 py-3 text-gray-700">{r.address ?? "-"}</td>
+                  <td className="px-4 py-3 text-gray-700">{r.last_date ?? "-"}</td>
+                  <td className="px-4 py-3">{r.orders_count}</td>
+                  <td className="px-4 py-3">{Currency(r.total as number)}</td>
+                  <td className="px-4 py-3">
+                    <button className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-100" aria-label="More">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <circle cx="12" cy="5" r="1.5" />
+                        <circle cx="12" cy="12" r="1.5" />
+                        <circle cx="12" cy="19" r="1.5" />
+                      </svg>
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );

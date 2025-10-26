@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { currency } from "@/data/mock";
+import { Currency } from "@/types";
 import SearchInput from "@/components/ui/search-input";
 import Badge from "@/components/ui/badge";
 import Modal from "@/components/ui/modal";
@@ -134,7 +134,7 @@ export default function Sales() {
 
       <div className="mb-3 flex items-center justify-between text-sm">
         <div className="text-gray-600">Total orders: <span className="font-medium text-gray-900">{filtered.length}</span></div>
-        <div className="text-gray-600">Grand total: <span className="font-medium text-gray-900">{currency(grandTotal)}</span></div>
+        <div className="text-gray-600">Grand total: <span className="font-medium text-gray-900">{Currency(grandTotal)}</span></div>
       </div>
 
       <div className="overflow-x-auto">
@@ -174,7 +174,7 @@ export default function Sales() {
                     {r.status}
                   </Badge>
                 </td>
-                <td className="px-4 py-3">{currency(r.total)}</td>
+                <td className="px-4 py-3">{Currency(r.total)}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-2">
                     {r.status === "pending" ? (
@@ -257,8 +257,8 @@ function OrderDetailDialog({ row, open, onOpenChange, onAccept, onDecline, busy 
                   <tr key={i} className="border-t">
                     <td className="px-3 py-2">{it.name}</td>
                     <td className="px-3 py-2">{it.qty}</td>
-                    <td className="px-3 py-2">{currency(it.price)}</td>
-                    <td className="px-3 py-2">{currency(it.price * it.qty)}</td>
+                    <td className="px-3 py-2">{Currency(it.price)}</td>
+                    <td className="px-3 py-2">{Currency(it.price * it.qty)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -267,7 +267,7 @@ function OrderDetailDialog({ row, open, onOpenChange, onAccept, onDecline, busy 
         </div>
         <div className="flex items-center justify-end gap-6">
           <div className="text-gray-700">Total</div>
-          <div className="text-base font-semibold text-gray-900">{currency(row.total)}</div>
+          <div className="text-base font-semibold text-gray-900">{Currency(row.total)}</div>
         </div>
         {row.status === "pending" ? (
           <div className="mt-4 flex items-center justify-end gap-2">

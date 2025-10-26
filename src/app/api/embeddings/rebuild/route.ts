@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
     // Fetch products (optionally by ids) with category name
     const query = supabase
       .from("products")
-      .select("id,name,description,product_categories(name)")
+      .select("id,name,sku,size,price,description,product_categories(name)")
       .order("name", { ascending: true });
     const { data: rows, error } = ids && Array.isArray(ids) && ids.length > 0
       ? await query.in("id", ids)
@@ -20,8 +20,15 @@ export async function POST(req: NextRequest) {
     const updates: Array<{ id: string; embedding: number[] } | null> = await Promise.all(
       (rows ?? []).map(async (p: any) => {
         const category = p?.product_categories?.name || "";
-        const parts = [p?.name || "", category ? `Category: ${category}` : "", p?.description || ""].filter(Boolean);
-        const text = parts.join(". ");
+        const parts = [
+          p?.name || "",
+          p?.sku ? `SKU: ${p.sku}` : "",
+          p?.size ? `Size: ${p.size}` : "",
+          category ? `Category: ${category}` : "",
+          `Price: ${p?.price ?? 0}`,
+          p?.description || "",
+        ].filter(Boolean);
+        const text = parts.join("\n");
         try {
           const embedding = await getTextEmbedding(text);
           return { id: p.id, embedding };

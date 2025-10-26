@@ -6,11 +6,9 @@ import TextField from "@/components/ui/text-field";
 import TextArea from "@/components/ui/text-area";
 import Button from "@/components/ui/button";
 import SearchInput from "@/components/ui/search-input";
-import { currency } from "@/data/mock";
+import { Currency, Customer, Product } from "@/types";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-
-type Product = { id: string; name: string; price: number; stock?: number };
-type Customer = { id: string; name: string; phone: string; email?: string };
+import { toast } from "react-toastify";
 
 export default function NewOrderPage() {
   const supabase = React.useMemo(() => createSupabaseBrowserClient(), []);
@@ -82,14 +80,17 @@ export default function NewOrderPage() {
     setMessage(null);
     if (!useNewCustomer && !selectedCustomerId) {
       setMessage("Select a customer or create a new one");
+      toast.warn("Select a customer or create a new one");
       return;
     }
     if (useNewCustomer && (!newName.trim() || !newPhone.trim())) {
       setMessage("Enter name and phone for the new customer");
+      toast.warn("Enter name and phone for the new customer");
       return;
     }
     if (itemRows.length === 0) {
       setMessage("Add at least one product");
+      toast.warn("Add at least one product");
       return;
     }
     setSaving(true);
@@ -115,6 +116,7 @@ export default function NewOrderPage() {
       const { error: iErr } = await supabase.from("order_items").insert(payload);
       if (iErr) throw iErr;
       setMessage("Order placed successfully");
+      toast.success("Order placed successfully");
       setItemRows([]);
       setSelectedCustomerId("");
       setUseNewCustomer(false);
@@ -122,6 +124,7 @@ export default function NewOrderPage() {
       setOrderStatus("pending");
     } catch (e: any) {
       setMessage(e?.message ?? "Failed to place order");
+      toast.error(e?.message ?? "Failed to place order");
     } finally {
       setSaving(false);
     }
@@ -189,7 +192,7 @@ export default function NewOrderPage() {
                   {filteredProducts.map((p) => (
                     <tr key={p.id} className="border-t">
                       <td className="px-3 py-2 text-gray-900">{p.name}</td>
-                      <td className="px-3 py-2">{currency(p.price)}</td>
+                      <td className="px-3 py-2">{Currency(p.price)}</td>
                       <td className="px-3 py-2">{p.stock ?? "-"}</td>
                       <td className="px-3 py-2">
                         <Button variant="outline" onClick={() => addProductToCart(p)}>Add</Button>
@@ -233,7 +236,7 @@ export default function NewOrderPage() {
                       <td className="px-3 py-2">
                         <TextField type="number" value={String(r.price)} onChange={(e) => updatePrice(idx, Number(e.target.value))} />
                       </td>
-                      <td className="px-3 py-2">{currency(r.qty * r.price)}</td>
+                      <td className="px-3 py-2">{Currency(r.qty * r.price)}</td>
                       <td className="px-3 py-2"><button className="text-sm text-rose-600" onClick={() => removeRow(idx)}>Remove</button></td>
                     </tr>
                   ))}
@@ -245,7 +248,7 @@ export default function NewOrderPage() {
             </div>
             <div className="mt-3 flex items-center justify-between text-base font-semibold">
               <div>Total</div>
-              <div>{currency(total)}</div>
+              <div>{Currency(total)}</div>
             </div>
             <div className="mt-4">
               <div className="mb-1 text-sm text-gray-700">Order status</div>

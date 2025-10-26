@@ -6,6 +6,7 @@ import Card from "@/components/ui/card";
 import TextField from "@/components/ui/text-field";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import LoadingScreen from "@/components/loading-screen";
 
 export default function Profile() {
   const supabase = React.useMemo(() => createSupabaseBrowserClient(), []);
@@ -83,7 +84,7 @@ export default function Profile() {
       </div>
 
       {loading ? (
-        <div className="text-gray-600">Loading...</div>
+        <LoadingScreen />
       ) : (
         <>
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

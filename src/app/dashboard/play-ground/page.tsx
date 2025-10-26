@@ -4,16 +4,16 @@ import React from "react";
 import ChatMessage from "@/components/ui/chat-message";
 import ChatInput from "@/components/ui/chat-input";
 import SearchInput from "@/components/ui/search-input";
-
-type Msg = { id: string; role: "user" | "assistant"; content: string; time?: string };
+import { TypeChatMessage } from "@/types";
 
 export default function Playground() {
-  const [messages, setMessages] = React.useState<Msg[]>([
+  const [messages, setMessages] = React.useState<TypeChatMessage[]>([
     { id: "m1", role: "assistant", content: "Welcome to the RAG playground. Ask anything!", time: "now" },
   ]);
   const [input, setInput] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [conversationHistory, setConversationHistory] = React.useState<any[]>([]);
+  const [conversationId, setConversationId] = React.useState<string | null>(null);
 
   // Memoized message row to avoid re-rendering older messages during streaming
   const MemoChatMessage = React.useMemo(() => React.memo(ChatMessage), []);
@@ -35,10 +35,14 @@ export default function Playground() {
   async function onSend() {
     const text = input.trim();
     if (!text) return;
+    if (text.length > 2000) { // bound input size
+      setMessages((m) => [...m, { id: crypto.randomUUID(), role: "assistant", content: "Input too long. Please keep it under 2000 characters." }]);
+      return;
+    }
     setInput("");
 
     // Append user message
-    const user: Msg = { id: crypto.randomUUID(), role: "user", content: text };
+    const user: TypeChatMessage = { id: crypto.randomUUID(), role: "user", content: text };
     setMessages((m) => [...m, user]);
 
     // Cancel any in-flight request
@@ -57,12 +61,15 @@ export default function Playground() {
 
     setLoading(true);
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60_000); // 60s safety timeout
       const resp = await fetch("/api/rag-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: text, conversationHistory }),
+        body: JSON.stringify({ query: text, conversationHistory, conversationId }),
         signal: abortRef.current.signal,
       });
+      clearTimeout(timeoutId);
 
       if (!resp.ok || !resp.body) {
         let msg = "AI chat failed";
@@ -103,11 +110,16 @@ export default function Playground() {
           if (!payload || payload === "[DONE]") continue;
           try {
             const evt = JSON.parse(payload);
-            if (evt.type === "chunk" && evt.content) {
+            if (evt.type === "products" && evt.conversationId && !conversationId) {
+              setConversationId(evt.conversationId as string);
+            } else if (evt.type === "chunk" && typeof evt.content === "string") {
               pendingChunkRef.current += evt.content as string;
               scheduleFlush();
             }
-          } catch {}
+          } catch {
+            // Ignore malformed SSE lines
+             
+          }
         }
       }
 

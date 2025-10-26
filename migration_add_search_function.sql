@@ -14,9 +14,12 @@ CREATE OR REPLACE FUNCTION search_products_by_embedding(
 RETURNS TABLE (
   id uuid,
   name text,
+  sku text,
+  size text,
   description text,
   price numeric,
   image_url text,
+  category_name text,
   similarity float
 )
 LANGUAGE plpgsql
@@ -26,11 +29,15 @@ BEGIN
   SELECT
     p.id,
     p.name,
+    p.sku,
+    p.size,
     p.description,
     p.price,
     p.image_url,
+    pc.name as category_name,
     1 - (p.embedding <=> query_embedding) as similarity
   FROM products p
+  LEFT JOIN product_categories pc ON pc.id = p.category_id
   WHERE p.embedding IS NOT NULL
     AND 1 - (p.embedding <=> query_embedding) > match_threshold
   ORDER BY p.embedding <=> query_embedding
@@ -47,9 +54,12 @@ CREATE OR REPLACE FUNCTION search_products_by_image_embedding(
 RETURNS TABLE (
   id uuid,
   name text,
+  sku text,
+  size text,
   description text,
   price numeric,
   image_url text,
+  category_name text,
   similarity float
 )
 LANGUAGE plpgsql
@@ -59,11 +69,15 @@ BEGIN
   SELECT
     p.id,
     p.name,
+    p.sku,
+    p.size,
     p.description,
     p.price,
     p.image_url,
+    pc.name as category_name,
     1 - (p.image_embedding <=> query_embedding) as similarity
   FROM products p
+  LEFT JOIN product_categories pc ON pc.id = p.category_id
   WHERE p.image_embedding IS NOT NULL
     AND 1 - (p.image_embedding <=> query_embedding) > match_threshold
   ORDER BY p.image_embedding <=> query_embedding
@@ -83,9 +97,12 @@ CREATE OR REPLACE FUNCTION search_products_hybrid(
 RETURNS TABLE (
   id uuid,
   name text,
+  sku text,
+  size text,
   description text,
   price numeric,
   image_url text,
+  category_name text,
   similarity float
 )
 LANGUAGE plpgsql
@@ -95,14 +112,18 @@ BEGIN
   SELECT
     p.id,
     p.name,
+    p.sku,
+    p.size,
     p.description,
     p.price,
     p.image_url,
+    pc.name as category_name,
     (
       text_weight * (1 - (p.embedding <=> text_embedding)) +
       image_weight * (1 - (p.image_embedding <=> image_embedding))
     ) as similarity
   FROM products p
+  LEFT JOIN product_categories pc ON pc.id = p.category_id
   WHERE p.embedding IS NOT NULL
     AND p.image_embedding IS NOT NULL
     AND (
@@ -125,9 +146,12 @@ CREATE OR REPLACE FUNCTION search_products_hybrid_text(
 RETURNS TABLE (
   id uuid,
   name text,
+  sku text,
+  size text,
   description text,
   price numeric,
   image_url text,
+  category_name text,
   similarity float,
   match_type text
 )
@@ -139,20 +163,27 @@ BEGIN
     SELECT
       p.id,
       p.name,
+      p.sku,
+      p.size,
       p.description,
       p.price,
       p.image_url,
+      pc.name as category_name,
       (1 - (p.embedding <=> query_embedding))                AS vec_sim,
       ts_rank_cd(p.search_tsv, plainto_tsquery('simple', unaccent(query_text))) AS fts_rank
     FROM products p
+    LEFT JOIN product_categories pc ON pc.id = p.category_id
     WHERE p.embedding IS NOT NULL
   )
   SELECT
     id,
     name,
+    sku,
+    size,
     description,
     price,
     image_url,
+    category_name,
     GREATEST(
       0.75 * vec_sim + 0.25 * fts_rank,
       vec_sim

@@ -8,8 +8,8 @@ import SearchInput from "@/components/ui/search-input";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import TextArea from "@/components/ui/text-area";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
-
-type Category = { id: string; name: string; updated_at: string };
+import { toast } from "react-toastify";
+import { Category } from "@/types";
 
 export default function ProductCategoriesPage() {
   const supabase = React.useMemo(() => createSupabaseBrowserClient(), []);
@@ -21,10 +21,13 @@ export default function ProductCategoriesPage() {
   const [deleting, setDeleting] = React.useState(false);
 
   async function loadCategories() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("product_categories")
       .select("id,name,updated_at")
       .order("name", { ascending: true });
+    if (error) {
+      toast.error(error.message || "Failed to load categories");
+    }
     setCategories((data as any) ?? []);
   }
 
@@ -91,7 +94,7 @@ export default function ProductCategoriesPage() {
                     <span className="text-gray-700">{c.name}</span>
                   </div>
                 </td>
-                <td className="px-4 py-3">{new Date(c.updated_at).toLocaleDateString()}</td>
+                <td className="px-4 py-3">{c.updated_at ? new Date(c.updated_at as string).toLocaleDateString() : "-"}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-2">
                     <button className="inline-flex h-8 items-center justify-center rounded-lg border border-gray-300 px-3 text-sm text-gray-700 hover:bg-gray-50" onClick={() => setOpenEdit(c.id)}>
@@ -128,9 +131,11 @@ export default function ProductCategoriesPage() {
         onConfirm={async () => {
           if (!deleteId) return;
           setDeleting(true);
-          await supabase.from("product_categories").delete().eq("id", deleteId);
+          const { error } = await supabase.from("product_categories").delete().eq("id", deleteId);
           setDeleting(false);
           setDeleteId(null);
+          if (error) toast.error(error.message || "Delete failed");
+          else toast.success("Category deleted");
           loadCategories();
         }}
       />
@@ -145,7 +150,12 @@ function AddCategoryDrawer({ onClose }: { onClose: () => void }) {
 
   async function onSave() {
     if (!name.trim()) return onClose();
-    await supabase.from("product_categories").insert({ name: name.trim(), description: description.trim() || null });
+    const { error } = await supabase.from("product_categories").insert({ name: name.trim(), description: description.trim() || null });
+    if (error) {
+      toast.error(error.message || "Failed to add category");
+    } else {
+      toast.success("Category added");
+    }
     onClose();
   }
 
@@ -200,10 +210,12 @@ function EditCategoryDrawer({ id, onClose }: { id: string; onClose: () => void }
 
   async function onSave() {
     if (!name.trim()) return onClose();
-    await supabase
+    const { error } = await supabase
       .from("product_categories")
       .update({ name: name.trim(), description: description.trim() || null })
       .eq("id", id);
+    if (error) toast.error(error.message || "Failed to update category");
+    else toast.success("Category updated");
     onClose();
   }
 

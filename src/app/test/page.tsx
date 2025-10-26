@@ -5,11 +5,8 @@ import TextField from "@/components/ui/text-field";
 import TextArea from "@/components/ui/text-area";
 import Button from "@/components/ui/button";
 import SearchInput from "@/components/ui/search-input";
-import { currency } from "@/data/mock";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-
-type Product = { id: string; name: string; price: number; stock?: number };
-type Customer = { id: string; name: string; phone: string; email?: string };
+import { Product, Customer, OrderItem, Currency } from "@/types";
 
 export default function TestOrderPage() {
   const supabase = React.useMemo(() => createSupabaseBrowserClient(), []);
@@ -28,7 +25,7 @@ export default function TestOrderPage() {
   const [customerSearch, setCustomerSearch] = React.useState("");
 
   // Cart items
-  const [itemRows, setItemRows] = React.useState<Array<{ product_id: string; name: string; price: number; qty: number; stock?: number }>>([]);
+  const [itemRows, setItemRows] = React.useState<Array<OrderItem & { name: string; stock?: number }>>([]);
   const [productSearch, setProductSearch] = React.useState("");
 
   // Status and submit
@@ -181,7 +178,7 @@ export default function TestOrderPage() {
                   {filteredProducts.map((p) => (
                     <tr key={p.id} className="border-t">
                       <td className="px-3 py-2 text-gray-900">{p.name}</td>
-                      <td className="px-3 py-2">{currency(p.price)}</td>
+                      <td className="px-3 py-2">{Currency(p.price)}</td>
                       <td className="px-3 py-2">{p.stock ?? "-"}</td>
                       <td className="px-3 py-2">
                         <Button variant="outline" onClick={() => addProductToCart(p)}>Add</Button>
@@ -225,7 +222,7 @@ export default function TestOrderPage() {
                       <td className="px-3 py-2">
                         <TextField type="number" value={String(r.price)} onChange={(e) => updatePrice(idx, Number(e.target.value))} />
                       </td>
-                      <td className="px-3 py-2">{currency(r.qty * r.price)}</td>
+                      <td className="px-3 py-2">{Currency(r.qty * r.price)}</td>
                       <td className="px-3 py-2"><button className="text-sm text-rose-600" onClick={() => removeRow(idx)}>Remove</button></td>
                     </tr>
                   ))}
@@ -237,7 +234,7 @@ export default function TestOrderPage() {
             </div>
             <div className="mt-3 flex items-center justify-between text-base font-semibold">
               <div>Total</div>
-              <div>{currency(total)}</div>
+              <div>{Currency(total)}</div>
             </div>
             <div className="mt-4">
               <div className="mb-1 text-sm text-gray-700">Order status</div>

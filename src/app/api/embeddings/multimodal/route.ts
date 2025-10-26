@@ -1,52 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "node:crypto";
-
-type RequestBody = {
-  text?: string;
-  imageBase64?: string; // raw base64 (no data URL prefix)
-  imageMimeType?: string; // e.g. "image/png"
-  imageUrl?: string; // optional: server will fetch and convert to base64
-};
-
-async function getAccessTokenFromServiceAccount() {
-  const client_email = process.env.GOOGLE_CLOUD_CLIENT_EMAIL;
-  const private_key = process.env.GOOGLE_CLOUD_PRIVATE_KEY?.replace(/\\n/g, "\n");
-  
-  if (!client_email || !private_key) {
-    throw new Error("GOOGLE_CLOUD_CLIENT_EMAIL and GOOGLE_CLOUD_PRIVATE_KEY must be set in environment variables");
-  }
-  
-  const aud = "https://oauth2.googleapis.com/token";
-
-  const now = Math.floor(Date.now() / 1000);
-  const header = { alg: "RS256", typ: "JWT" };
-  const claim = {
-    iss: client_email,
-    sub: client_email,
-    aud,
-    scope: "https://www.googleapis.com/auth/cloud-platform",
-    iat: now,
-    exp: now + 3600,
-  };
-  const base64url = (obj: any) => Buffer.from(JSON.stringify(obj)).toString("base64url");
-  const unsigned = `${base64url(header)}.${base64url(claim)}`;
-  const sign = crypto.createSign("RSA-SHA256");
-  sign.update(unsigned);
-  const signature = sign.sign(private_key, "base64url");
-  const assertion = `${unsigned}.${signature}`;
-
-  const resp = await fetch(aud, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion,
-    }),
-  });
-  const data = await resp.json();
-  if (!resp.ok) throw new Error(data?.error_description || data?.error || "token_exchange_failed");
-  return { accessToken: data.access_token as string };
-}
+import { getGoogleCloudAccessToken } from "@/lib/google-cloud-auth";
+import { MultimodalEmbeddingRequest, MultimodalEmbeddingResponse } from "@/types";
 
 async function fetchImageAsBase64(url: string): Promise<{ base64: string; mime: string } | null> {
   try {
@@ -62,7 +16,7 @@ async function fetchImageAsBase64(url: string): Promise<{ base64: string; mime: 
 
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as RequestBody;
+    const body = (await req.json()) as MultimodalEmbeddingRequest;
     const location = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
     const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
     
@@ -70,25 +24,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "GOOGLE_CLOUD_PROJECT_ID not set in environment" }, { status: 500 });
     }
 
-    const { accessToken } = await getAccessTokenFromServiceAccount();
+    const accessToken = await getGoogleCloudAccessToken();
 
     let imagePart: any = null;
-    if (body.imageBase64 && body.imageMimeType) {
-      // Vertex AI expects { bytesBase64Encoded: "..." } format for images
+    // Prefer client-sent base64 to avoid SSRF
+    if (body.imageBase64 && typeof body.imageBase64 === "string") {
       imagePart = { bytesBase64Encoded: body.imageBase64 };
-    } else if (body.imageUrl) {
-      const fetched = await fetchImageAsBase64(body.imageUrl);
-      if (fetched) {
-        imagePart = { bytesBase64Encoded: fetched.base64 };
-      } else {
-        // Image fetch failed - log it but continue with text-only if we have text
-        console.warn(`Failed to fetch image from URL: ${body.imageUrl}`);
+    } else if (body.imageUrl && typeof body.imageUrl === "string") {
+      try {
+        const u = new URL(body.imageUrl);
+        if (u.protocol === "https:") {
+          const fetched = await fetchImageAsBase64(u.toString());
+          if (fetched) {
+            imagePart = { bytesBase64Encoded: fetched.base64 };
+          } else {
+            console.warn(`Failed to fetch image from URL: ${body.imageUrl}`);
+          }
+        } else {
+          return NextResponse.json({ error: "invalid_image_url", details: "Only https URLs are allowed" } satisfies MultimodalEmbeddingResponse, { status: 400 });
+        }
+      } catch {
+        return NextResponse.json({ error: "invalid_image_url", details: "Malformed URL" } satisfies MultimodalEmbeddingResponse, { status: 400 });
       }
     }
 
     // Check we have at least text or image
     if (!body.text && !imagePart) {
-      return NextResponse.json({ error: "no_input", details: "Must provide text, imageBase64, or a valid imageUrl" }, { status: 400 });
+      return NextResponse.json({ error: "no_input", details: "Must provide text, imageBase64, or a valid imageUrl" } satisfies MultimodalEmbeddingResponse, { status: 400 });
     }
 
     async function callForRegion(loc: string) {
@@ -127,20 +89,17 @@ export async function POST(req: NextRequest) {
       }
       // If not found, try next region; for other errors, return immediately
       if (resp.status !== 404) {
-        return NextResponse.json({ error: "vertex_error", status: resp.status, details: typeof parsed === "string" ? parsed : (parsed?.error?.message || parsed) }, { status: 500 });
+        return NextResponse.json({ error: "vertex_error", status: resp.status, details: typeof parsed === "string" ? parsed : (parsed?.error?.message || parsed) } satisfies MultimodalEmbeddingResponse, { status: 500 });
       }
     }
     if (!finalData) {
-      return NextResponse.json({ error: "vertex_error", status: 404, details: "Model not found in tried regions", tried: regionsToTry }, { status: 500 });
+      return NextResponse.json({ error: "vertex_error", status: 404, details: "Model not found in tried regions" } satisfies MultimodalEmbeddingResponse, { status: 500 });
     }
 
     // Typical response via :predict => { predictions: [{ textEmbedding?: number[], imageEmbedding?: number[], embedding?: number[] }] }
     const predictions = (finalData as any)?.predictions;
     if (!Array.isArray(predictions) || predictions.length === 0) {
-      return NextResponse.json(
-        { error: "vertex_error", status: 500, details: "Empty predictions from Vertex AI" },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: "vertex_error", status: 500, details: "Empty predictions from Vertex AI" } satisfies MultimodalEmbeddingResponse, { status: 500 });
     }
     const first = predictions[0] || {};
     
@@ -154,10 +113,15 @@ export async function POST(req: NextRequest) {
     const textEmbedding = first.textEmbedding ? normalizeVector(first.textEmbedding) : null;
     const imageEmbedding = first.imageEmbedding ? normalizeVector(first.imageEmbedding) : null;
     
-    return NextResponse.json({ embedding: combined, textEmbedding, imageEmbedding, usedRegion });
+    return NextResponse.json({
+      embedding: combined || undefined,
+      textEmbedding: textEmbedding || undefined,
+      imageEmbedding: imageEmbedding || undefined,
+      usedRegion: usedRegion || undefined,
+    } satisfies MultimodalEmbeddingResponse);
   } catch (e: any) {
     console.error("Multimodal embedding error:", e);
-    return NextResponse.json({ error: "unhandled", details: e?.message ?? "Failed", stack: e?.stack }, { status: 500 });
+    return NextResponse.json({ error: "unhandled", details: e?.message ?? "Failed" } satisfies MultimodalEmbeddingResponse, { status: 500 });
   }
 }
 

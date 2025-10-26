@@ -65,8 +65,8 @@ export async function POST(req: NextRequest) {
       .limit(50);
 
     // Build trimmed history: summary + last 6 messages
-    const recentHistory = (priorMessages || []).slice(-6);
-    const dbHistory = recentHistory.map((m: any) => ({ role: m.role, content: m.content }));
+    // const recentHistory = (priorMessages || []).slice(-6);
+    // const dbHistory = recentHistory.map((m: any) => ({ role: m.role, content: m.content }));
 
     // 1. Get query embedding (direct call, avoids internal HTTP)
     const textEmbedding = await getTextEmbedding(query);
@@ -116,8 +116,9 @@ export async function POST(req: NextRequest) {
           .map((p: any, i: number) => {
             const categoryName = (p?.product_categories && p.product_categories?.name) || p?.category || p?.category_name || null;
             const categoryLine = categoryName ? `\nCategory: ${categoryName}` : "";
+            const sizeLine = p?.size ? `\nSize: ${p.size}` : "";
             const imageUrl = p?.image_url;
-            return `#${i + 1} ${p.name} - $${p.price}${categoryLine}\nKey: ${(p.description || "").slice(0, 140)}${imageUrl ? `\nImage: ${imageUrl}` : ""} ${p.sku ? `\nSKU: ${p.sku}` : ""}  ${p.stock ? `\nStock: ${p.stock}` : ""}`;
+            return `#${i + 1} ${p.name} - $${p.price}${categoryLine}${sizeLine}\nKey: ${(p.description || "").slice(0, 140)}${imageUrl ? `\nImage: ${imageUrl}` : ""} ${p.sku ? `\nSKU: ${p.sku}` : ""}  ${p.stock ? `\nStock: ${p.stock}` : ""}`;
           })
           .join("\n")
       : "No relevant products found.";
@@ -157,8 +158,10 @@ export async function POST(req: NextRequest) {
 
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
+    
+    // Use a mutable object to track the assistant's response across stream chunks
+    const assistantBuffer = { current: "" };
 
-    let assistantBuffer = "";
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         // Send initial products payload
@@ -186,7 +189,7 @@ export async function POST(req: NextRequest) {
                 const json = JSON.parse(payload);
                 const delta = json?.choices?.[0]?.delta?.content;
                 if (typeof delta === "string" && delta.length > 0) {
-                  assistantBuffer += delta;
+                  assistantBuffer.current += delta;
                   const evt = `data: ${JSON.stringify({ type: "chunk", content: delta })}\n\n`;
                   controller.enqueue(encoder.encode(evt));
                 }
@@ -217,9 +220,9 @@ export async function POST(req: NextRequest) {
       try {
         // Wait briefly to allow buffer to collect during stream; then save
         await new Promise((r) => setTimeout(r, 50));
-        if (assistantBuffer.trim().length > 0) {
+        if (assistantBuffer.current.trim().length > 0) {
           try {
-            await supabase.from("chat_messages").insert({ conversation_id: conversationId, role: "assistant", content: assistantBuffer }).select("id").single();
+            await supabase.from("chat_messages").insert({ conversation_id: conversationId, role: "assistant", content: assistantBuffer.current }).select("id").single();
           } catch {}
           await supabase.from("chat_conversations").update({ updated_at: new Date().toISOString() }).eq("id", conversationId);
         }
@@ -229,10 +232,10 @@ export async function POST(req: NextRequest) {
           .from("chat_messages")
           .select("id", { count: "exact", head: true })
           .eq("conversation_id", conversationId);
-        if ((count ?? 0) >= 12 && (assistantBuffer?.length ?? 0) > 0) {
-          const summaryInput = `${conversationSummary ? `Existing summary: ${conversationSummary}\n` : ""}Latest assistant reply: ${assistantBuffer}`.slice(0, 4000);
+        if ((count ?? 0) >= 12 && (assistantBuffer.current.trim().length ?? 0) > 0) {
+          const summaryInput = `${conversationSummary ? `Existing summary: ${conversationSummary}\n` : ""}Latest assistant reply: ${assistantBuffer.current.trim()}`.slice(0, 4000);
           try {
-            const baseUrl = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
+            const baseUrl = process.env.OPENAI_BASE_URL;
             const sumResp = await fetch(`${baseUrl}/chat/completions`, {
               method: "POST",
               headers: {
@@ -240,7 +243,7 @@ export async function POST(req: NextRequest) {
                 Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
               },
               body: JSON.stringify({
-                model: "gpt-4o-mini",
+                model: process.env.OPENAI_MODEL,
                 messages: [
                   { role: "system", content: "Summarize the conversation context in ≤60 words, keep key entities and intent." },
                   { role: "user", content: summaryInput },

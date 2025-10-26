@@ -10,6 +10,7 @@ import Button from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import LoadingScreen from "@/components/loading-screen";
+import { toast } from "react-toastify";
 
 export default function Page() {
   const [selectedLang, setSelectedLang] = useState<"EN" | "KM">("EN");
@@ -51,8 +52,10 @@ export default function Page() {
       });
       if (error) {
         setError(error.message);
+        toast.error(error.message || "Sign in failed");
         return;
       }
+      toast.success("Signed in successfully");
       router.replace("/dashboard");
     } finally {
       setLoading(false);

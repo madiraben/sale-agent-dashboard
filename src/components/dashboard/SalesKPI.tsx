@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { currency } from "@/data/mock";
+import { Currency } from "@/types";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type Range = {
@@ -73,19 +73,19 @@ export default function SalesKPI() {
       <div className="grid gap-4 md:grid-cols-4">
         <div className="rounded-xl border p-4">
           <div className="text-xs text-gray-600">Today</div>
-          <div className="text-xl font-semibold text-gray-900">{loading ? "—" : currency(todayTotal)}</div>
+          <div className="text-xl font-semibold text-gray-900">{loading ? "—" : Currency(todayTotal)}</div>
         </div>
         <div className="rounded-xl border p-4">
           <div className="text-xs text-gray-600">This Week</div>
-          <div className="text-xl font-semibold text-gray-900">{loading ? "—" : currency(thisWeekTotal)}</div>
+          <div className="text-xl font-semibold text-gray-900">{loading ? "—" : Currency(thisWeekTotal)}</div>
         </div>
         <div className="rounded-xl border p-4">
           <div className="text-xs text-gray-600">Last Week</div>
-          <div className="text-xl font-semibold text-gray-900">{loading ? "—" : currency(lastWeekTotal)}</div>
+          <div className="text-xl font-semibold text-gray-900">{loading ? "—" : Currency(lastWeekTotal)}</div>
         </div>
         <div className="rounded-xl border p-4">
           <div className="text-xs text-gray-600">This Month</div>
-          <div className="text-xl font-semibold text-gray-900">{loading ? "—" : currency(thisMonthTotal)}</div>
+          <div className="text-xl font-semibold text-gray-900">{loading ? "—" : Currency(thisMonthTotal)}</div>
         </div>
       </div>
 

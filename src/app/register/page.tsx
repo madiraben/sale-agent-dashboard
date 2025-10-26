@@ -9,6 +9,7 @@ import LanguageSwitcher from "@/components/language-switcher";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import LoadingScreen from "@/components/loading-screen";
+import { toast } from "react-toastify";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -42,13 +43,16 @@ export default function RegisterPage() {
       if (sess.session) {
         const { error: rpcErr } = await (supabase as any).rpc("bootstrap_tenant", { p_name: workspace || "My Workspace" });
         if (rpcErr) throw rpcErr;
+        toast.success("Account created successfully");
         router.replace("/dashboard");
       } else {
         // If email confirmation is enabled, show message
         setError("Check your email to confirm your account.");
+        toast.info("Check your email to confirm your account.");
       }
     } catch (e: any) {
       setError(e?.message ?? "Failed to register");
+      toast.error(e?.message ?? "Failed to register");
     } finally {
       setLoading(false);
     }
