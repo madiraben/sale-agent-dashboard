@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+/supabase_sql
 /.pnp
 .pnp.*
 .yarn/*

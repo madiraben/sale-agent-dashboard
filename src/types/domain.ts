@@ -2,6 +2,8 @@
 
 export const Currency = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 
+export type Language = "EN" | "KM";
+
 export type Customer = {
   id: string;
   name: string;

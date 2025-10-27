@@ -18,11 +18,11 @@ export function buildProductFacts(products: Array<{ name: string; price?: any; d
   const lines = products.map((p, i) => {
     const price = p?.price != null ? `$${p.price}` : "";
     const desc = (p?.description || "").slice(0, 140).replace(/\s+/g, " ");
-    const stock = typeof p?.stock === 'number' ? `In stock: ${p.stock}` : "";
+    // const stock = typeof p?.stock === 'number' ? `In stock: ${p.stock}` : "";
     const categoryName = (p as any)?.product_categories?.name || (p as any)?.category || null;
     const categoryLine = categoryName ? `\nCategory: ${categoryName}` : "";
     const imageLine = p?.image_url ? `\nImage: ![Product Image](${p.image_url})` : "";
-    return `#${i + 1} ${p.name}${price ? ` — ${price}` : ""}${categoryLine}${desc ? `\n${desc}` : ""}${stock ? `\n${stock}` : ""}${imageLine}`;
+    return `#${i + 1} ${p.name}${price ? ` — ${price}` : ""}${categoryLine}${desc ? `\n${desc}` : ""}: ""}${imageLine}`;
   });
   return lines.join("\n");
 }
