@@ -37,7 +37,7 @@ export async function POST(req: Request) {
     if (!price || !price.startsWith("price_")) {
       return NextResponse.json({ error: `Price for plan '${plan}' is not configured` }, { status: 400 });
     }
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const appUrl = process.env.APP_URL ?? "http://localhost:3000";
     const successUrl = `${appUrl}/dashboard?sub=success`;
     const cancelUrl = `${appUrl}/billing?canceled=1`;
 

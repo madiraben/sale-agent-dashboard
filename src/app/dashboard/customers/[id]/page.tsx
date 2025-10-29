@@ -1,6 +1,6 @@
 "use client"
-import { notFound, useParams } from "next/navigation";
-import { Customer, Order, OrderItem, Currency } from "@/types";
+import { useParams, usePathname } from "next/navigation";
+import { Customer, Order, Currency } from "@/types";
 import Button from "@/components/ui/button";
 import Modal from "@/components/ui/modal";
 import LoadingScreen from "@/components/loading-screen";
@@ -11,12 +11,23 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 export default function CustomerHistory() {
   const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
-  const { id } = useParams<{ id: string }>();
+  const { id: paramId } = useParams<{ id?: string }>();
+  const pathname = usePathname();
+  const id = useMemo(() => {
+    if (typeof paramId === "string" && paramId.length > 0) return paramId;
+    // Fallback: extract last segment from pathname /dashboard/customers/[id]
+    if (typeof pathname === "string") {
+      const seg = pathname.split("/").filter(Boolean).pop();
+      return seg ?? "";
+    }
+    return "";
+  }, [paramId, pathname]);
 
   const [customer, setCustomer] = useState<Customer | null | undefined>(undefined);
   const [history, setHistory] = useState<Order[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
+  type DisplayOrderItem = { name: string; qty: number; price: number };
+  const [orderItems, setOrderItems] = useState<DisplayOrderItem[]>([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isMounted = useRef(true);
@@ -26,7 +37,7 @@ export default function CustomerHistory() {
   }, []);
 
   const loadCustomerAndOrders = useCallback(async () => {
-    if (!id) return ;
+    if (!id || typeof id !== "string") return;
     setError(null);
     try {
       const { data: c, error: cErr } = await supabase
@@ -54,7 +65,19 @@ export default function CustomerHistory() {
   useEffect(() => { loadCustomerAndOrders(); }, [loadCustomerAndOrders]);
 
   if (customer === undefined) return <LoadingScreen />;
-  if (customer === null) return notFound();
+  if (customer === null) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Customer not found</h2>
+            <p className="text-sm text-gray-600">The requested customer does not exist or was removed.</p>
+          </div>
+          <Button variant="outline" onClick={() => router.push("/dashboard/customers")}>Back to customers</Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

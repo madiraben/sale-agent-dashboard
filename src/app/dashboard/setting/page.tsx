@@ -8,6 +8,7 @@ import PasswordField from "@/components/ui/password-field";
 import ImageUploader from "@/components/ui/image-uploader";
 import LanguageSwitcher from "@/components/language-switcher";
 import Button from "@/components/ui/button";
+import Link from "next/link";
 
 export default function Setting() {
   const [name, setName] = React.useState("");
@@ -20,7 +21,7 @@ export default function Setting() {
   const [confirmPassword, setConfirmPassword] = React.useState("");
 
   function handleSaveProfile() {
-    // TODO: integrate with API
+      // TODO: integrate with API
     console.log({ name, email, bio, avatar });
   }
 
@@ -83,6 +84,16 @@ export default function Setting() {
           </div>
         </Card>
       </div>
+
+      <Card>
+        <div className="mb-4 text-base font-semibold text-gray-900">Facebook</div>
+        <div className="flex items-center justify-between gap-4">
+          <div className="text-sm text-gray-600">Connect your Facebook Page to enable the Messenger bot.</div>
+          <Link href="/api/facebook/oauth/start" className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-white hover:bg-blue-700">
+            Connect Facebook Page
+          </Link>
+        </div>
+      </Card>
 
       <Card>
         <div className="mb-4 text-base font-semibold text-gray-900">Security</div>

@@ -23,7 +23,7 @@ export async function POST() {
 
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
-    const returnUrl = process.env.STRIPE_PORTAL_RETURN_URL ?? `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/dashboard/billing`;
+    const returnUrl = process.env.STRIPE_PORTAL_RETURN_URL ?? `${process.env.APP_URL ?? "http://localhost:3000"}/dashboard/billing`;
 
     // Ensure a portal configuration exists (Stripe requires a default or explicit configuration)
     let configurationId: string | undefined;
