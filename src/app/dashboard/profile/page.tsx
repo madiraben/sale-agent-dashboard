@@ -17,6 +17,7 @@ export default function Profile() {
   const [billing, setBilling] = React.useState<{ active: boolean; plan?: string | null; renew?: string | null } | null>(null);
   const [card, setCard] = React.useState<{ brand: string; last4: string; exp_month: number; exp_year: number } | null>(null);
   const [portalLoading, setPortalLoading] = React.useState(false);
+  const [fb, setFb] = React.useState<{ id: string | null; name: string | null } | null>(null);
 
   React.useEffect(() => {
     async function load() {
@@ -39,6 +40,10 @@ export default function Profile() {
       setLoading(false);
     }
     load();
+  }, []);
+
+  React.useEffect(() => {
+    fetch("/api/facebook/connected").then((r) => r.json()).then((d) => setFb(d)).catch(() => {});
   }, []);
 
   async function onLogout() {
@@ -92,6 +97,10 @@ export default function Profile() {
               <div className="mb-4 text-base font-semibold text-gray-900">Account</div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <TextField label="Email" type="email" value={email} disabled />
+                <div>
+                  <div className="mb-2 text-sm text-gray-700">Facebook Page</div>
+                  <div className="rounded-md border px-3 py-2 text-sm text-gray-800">{fb?.name || fb?.id || '-'}</div>
+                </div>
               </div>
               <div className="mt-4 flex justify-end">
                 <Button variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-50" onClick={onLogout}>Log out</Button>

@@ -63,15 +63,24 @@ export async function GET(req: NextRequest) {
     const longJson = await longResp.json();
     const longLivedToken: string | undefined = longJson.access_token;
 
-    // TODO: Store longLivedToken securely (e.g., link to user session / Supabase) and proceed to page selection
-    // For now, just signal success back to settings
     const redirect = new URL(settingsUrl);
-    if (longLivedToken) {
-      redirect.searchParams.set("fb", "ok");
-    } else {
+    if (!longLivedToken) {
       redirect.searchParams.set("fb_error", "no_long_token");
+      return NextResponse.redirect(redirect.toString());
     }
-    return NextResponse.redirect(redirect.toString());
+
+    // Set httpOnly cookie so server routes can list pages and connect one
+    const res = NextResponse.redirect(redirect.toString());
+    res.cookies.set({
+      name: "fb_user_token",
+      value: longLivedToken,
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 60, // 60 days
+    });
+    return res;
   } catch (_err) {
     const redirect = new URL(settingsUrl);
     redirect.searchParams.set("fb_error", "unexpected_error");
