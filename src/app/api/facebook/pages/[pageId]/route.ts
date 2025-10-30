@@ -16,6 +16,12 @@ export async function DELETE(req: NextRequest, { params }: { params: { pageId: s
     const { data: u } = await supabase.auth.getUser();
     const userId = u.user?.id;
     if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    // Get page token before deletion to unsubscribe
+    const { data: row } = await supabase
+      .from("facebook_pages")
+      .select("page_token")
+      .match({ user_id: userId, page_id: pageId })
+      .maybeSingle();
 
     const { error } = await supabase
       .from("facebook_pages")
@@ -30,6 +36,18 @@ export async function DELETE(req: NextRequest, { params }: { params: { pageId: s
       res.cookies.set({ name: "fb_page_id", value: "", maxAge: 0, path: "/" });
       res.cookies.set({ name: "fb_page_name", value: "", maxAge: 0, path: "/" });
       res.cookies.set({ name: "fb_page_token", value: "", maxAge: 0, path: "/" });
+    }
+
+    // Unsubscribe the app from the page
+    try {
+      const pageToken = (row as any)?.page_token as string | undefined;
+      if (pageToken) {
+        const unsubUrl = new URL(`https://graph.facebook.com/${process.env.FB_GRAPH_VERSION || "v20.0"}/${pageId}/subscribed_apps`);
+        unsubUrl.searchParams.set("access_token", pageToken);
+        await fetch(unsubUrl.toString(), { method: "DELETE" });
+      }
+    } catch {
+      // ignore unsubscribe failure
     }
     return res;
   } catch {

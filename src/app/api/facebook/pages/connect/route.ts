@@ -50,6 +50,22 @@ export async function POST(req: NextRequest) {
       );
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+    // Auto-subscribe this page to the app's webhook for Messenger messages
+    try {
+      if (pageToken) {
+        const subUrl = new URL(`https://graph.facebook.com/${GRAPH_VER}/${pageId}/subscribed_apps`);
+        subUrl.searchParams.set("access_token", pageToken);
+        subUrl.searchParams.set("subscribed_fields", [
+          "messages",
+          "messaging_postbacks",
+          // add more if needed, e.g., 'message_deliveries','message_reads'
+        ].join(","));
+        await fetch(subUrl.toString(), { method: "POST" });
+      }
+    } catch {
+      // swallow subscription errors; user can retry later
+    }
+
     return NextResponse.json({ ok: true, page: { id: pageId, name: pageName } });
   } catch {
     return NextResponse.json({ error: "unexpected_error" }, { status: 500 });
