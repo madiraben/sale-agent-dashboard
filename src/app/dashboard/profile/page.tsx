@@ -25,6 +25,10 @@ export default function Profile() {
   const [selectedPageId, setSelectedPageId] = React.useState<string>("");
   const [fbBusy, setFbBusy] = React.useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = React.useState(false);
+  // telegram
+  const [tg, setTg] = React.useState<any>(null);
+  const [tgToken, setTgToken] = React.useState<string>("");
+  const [tgBusy, setTgBusy] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -77,6 +81,16 @@ export default function Profile() {
     loadFbAll();
   }, []);
 
+  React.useEffect(() => {
+    async function loadTg() {
+      try {
+        const data = await fetch("/api/telegram/connected").then((r) => r.json()).catch(() => ({}));
+        setTg(data && (data.username || data.id) ? data : null);
+      } catch {}
+    }
+    loadTg();
+  }, []);
+
   async function onLogoutConfirmed() {
     await supabase.auth.signOut();
     router.replace("/login");
@@ -90,6 +104,42 @@ export default function Profile() {
     // fallback if plan stored is a price id or nickname: try to infer
     if (p.startsWith("price_")) return "Paid";
     return p ? p : "-";
+  }
+
+  async function refreshTg() {
+    try {
+      const data = await fetch("/api/telegram/connected").then((r) => r.json()).catch(() => ({}));
+      setTg(data && (data.username || data.id) ? data : null);
+    } catch {}
+  }
+
+  async function connectTelegram() {
+    if (!tgToken || tgBusy) return;
+    setTgBusy(true);
+    try {
+      const res = await fetch("/api/telegram/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bot_token: tgToken }),
+      });
+      if (res.ok) {
+        setTgToken("");
+        await refreshTg();
+      }
+    } finally {
+      setTgBusy(false);
+    }
+  }
+
+  async function disconnectTelegram() {
+    if (tgBusy) return;
+    setTgBusy(true);
+    try {
+      await fetch("/api/telegram/connected", { method: "DELETE" });
+      await refreshTg();
+    } finally {
+      setTgBusy(false);
+    }
   }
 
   function formatDate(iso?: string | null) {
@@ -334,6 +384,27 @@ export default function Profile() {
                     </a>
                   </div>
                   <FacebookProfileSection />
+                </div>
+                <div>
+                  <div className="mb-2 flex items-center justify-between">
+                    <div className="text-sm text-gray-700">Telegram</div>
+                  </div>
+                  {tg ? (
+                    <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                      <div className="text-sm text-gray-800">@{tg.username || tg.id}</div>
+                      <Button variant="outline" className="text-rose-600 border-rose-200 hover:bg-rose-50" onClick={disconnectTelegram} disabled={tgBusy}>
+                        Disconnect
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <TextField placeholder="Enter Telegram Bot Token" value={tgToken} onChange={(e) => setTgToken(e.target.value)} />
+                      <Button variant="outline" onClick={connectTelegram} disabled={!tgToken || tgBusy}>Connect</Button>
+                    </div>
+                  )}
+                  <div className="mt-2 text-xs text-gray-500">
+                    Paste your BotFather token to enable the Telegram bot with RAG.
+                  </div>
                 </div>
               </div>
             </Card>

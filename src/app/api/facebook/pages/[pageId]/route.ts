@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { unsubscribePageFromApp } from "@/lib/facebook/transport";
 
 export async function DELETE(req: NextRequest, { params }: { params: { pageId: string } }) {
   // Basic CSRF/Origin check
@@ -41,11 +42,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { pageId: s
     // Unsubscribe the app from the page
     try {
       const pageToken = (row as any)?.page_token as string | undefined;
-      if (pageToken) {
-        const unsubUrl = new URL(`https://graph.facebook.com/${process.env.FB_GRAPH_VERSION || "v20.0"}/${pageId}/subscribed_apps`);
-        unsubUrl.searchParams.set("access_token", pageToken);
-        await fetch(unsubUrl.toString(), { method: "DELETE" });
-      }
+      if (pageToken) await unsubscribePageFromApp(pageToken, pageId);
     } catch {
       // ignore unsubscribe failure
     }

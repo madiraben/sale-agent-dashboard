@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { subscribePageToApp } from "@/lib/facebook/transport";
 
 const GRAPH_VER = process.env.FB_GRAPH_VERSION || "v20.0";
 
@@ -52,16 +53,7 @@ export async function POST(req: NextRequest) {
 
     // Auto-subscribe this page to the app's webhook for Messenger messages
     try {
-      if (pageToken) {
-        const subUrl = new URL(`https://graph.facebook.com/${GRAPH_VER}/${pageId}/subscribed_apps`);
-        subUrl.searchParams.set("access_token", pageToken);
-        subUrl.searchParams.set("subscribed_fields", [
-          "messages",
-          "messaging_postbacks",
-          // add more if needed, e.g., 'message_deliveries','message_reads'
-        ].join(","));
-        await fetch(subUrl.toString(), { method: "POST" });
-      }
+      if (pageToken) await subscribePageToApp(pageToken, pageId);
     } catch {
       // swallow subscription errors; user can retry later
     }
