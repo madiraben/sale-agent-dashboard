@@ -115,7 +115,9 @@ export default function Page() {
           </Button>
 
           <div className="mb-5 mt-2 text-center text-sm text-gray-500">Don't have an account yet?</div>
-
+          <Button className="mt-6" fullWidth onClick={() => router.push("/auth/register")}>
+            Register
+          </Button>
           <div className="flex flex-wrap items-center justify-center gap-3">
             <Button variant="outline">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">

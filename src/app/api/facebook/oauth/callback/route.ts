@@ -8,6 +8,7 @@ export async function GET(req: NextRequest) {
 
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
 
   const settingsUrl = `${appUrl || ""}/dashboard/setting`;
 
@@ -24,6 +25,17 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    // Validate state to prevent CSRF
+    const expectedState = req.cookies.get("fb_oauth_state")?.value;
+    if (!expectedState || !state || state !== expectedState) {
+      const redirect = new URL(settingsUrl);
+      redirect.searchParams.set("fb_error", "invalid_state");
+      const res = NextResponse.redirect(redirect.toString());
+      // clear state cookie
+      res.cookies.set({ name: "fb_oauth_state", value: "", maxAge: 0, path: "/" });
+      return res;
+    }
+
     const redirectUri = `${appUrl}/api/facebook/oauth/callback`;
 
     // Step 1: Exchange code for short-lived user token
@@ -71,6 +83,8 @@ export async function GET(req: NextRequest) {
 
     // Set httpOnly cookie so server routes can list pages and connect one
     const res = NextResponse.redirect(redirect.toString());
+    // clear state cookie
+    res.cookies.set({ name: "fb_oauth_state", value: "", maxAge: 0, path: "/" });
     res.cookies.set({
       name: "fb_user_token",
       value: longLivedToken,

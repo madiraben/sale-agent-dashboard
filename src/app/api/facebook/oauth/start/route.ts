@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 
 export async function GET(req: NextRequest) {
   const appId = process.env.FB_APP_ID;
@@ -18,7 +19,20 @@ export async function GET(req: NextRequest) {
     "pages_read_engagement",
     "pages_manage_metadata",
   ].join(","));
-  return NextResponse.redirect(url.toString());
+  // CSRF protection: state param
+  const state = crypto.randomBytes(16).toString("hex");
+  url.searchParams.set("state", state);
+  const res = NextResponse.redirect(url.toString());
+  res.cookies.set({
+    name: "fb_oauth_state",
+    value: state,
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 10, // 10 minutes
+  });
+  return res;
 }
 
 

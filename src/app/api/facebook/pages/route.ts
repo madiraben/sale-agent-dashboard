@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
     if (!r.ok) return NextResponse.json({ pages: [], connected: null }, { status: 200 });
     const j = await r.json();
     const pages = Array.isArray(j?.data)
-      ? j.data.map((p: any) => ({ id: p.id, name: p.name, category: p.category, access_token: p.access_token }))
+      ? j.data.map((p: any) => ({ id: p.id, name: p.name, category: p.category }))
       : [];
     const connected = {
       id: req.cookies.get("fb_page_id")?.value || null,
