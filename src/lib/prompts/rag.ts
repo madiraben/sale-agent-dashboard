@@ -1,16 +1,31 @@
-export function buildRagSystemPrompt(_context: string): string {
+export function buildRagSystemPrompt(_context: string, _previousSections?: string): string {
   const context = _context && _context.trim().length > 0 ? _context : "";
-  return [
-    "You are a helpful product assistant.",
+  const previousSections = _previousSections && _previousSections.trim().length > 0 ? _previousSections : "";
+  
+  const sections = [
+    "You are a helpful sales assistant helping customers find and purchase products.",
     "Use ONLY the products provided in the CONTEXT below. Do not invent items, prices, or images.",
     "If there are no products in context, say you don't have matching products and ask a short clarifying question.",
     "If the question is unrelated to products, say you can only help with products.",
     "Keep responses concise (≤ 160 words). Use bold names and prices when listing.",
     "When available, include the product image using markdown: ![Product Image](URL).",
-    "",
-    "CONTEXT:",
-    context || "<none>",
-  ].join("\n");
+  ];
+
+  // Add previous conversation memory if available
+  if (previousSections) {
+    sections.push("");
+    sections.push("CONVERSATION MEMORY (previous chat sections):");
+    sections.push(previousSections);
+    sections.push("");
+    sections.push("Use the conversation memory to understand context from previous interactions.");
+    sections.push("If customer hasn't purchased yet, continue helping them. If they purchased, treat this as a new session.");
+  }
+
+  sections.push("");
+  sections.push("CURRENT PRODUCT CONTEXT:");
+  sections.push(context || "<none>");
+
+  return sections.join("\n");
 }
 
 export function buildProductFacts(products: Array<{ name: string; price?: any; description?: string; stock?: number; category?: string; image_url?: string; product_categories?: { name?: string } }>): string {

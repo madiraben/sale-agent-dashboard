@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { buildRagSystemPrompt } from "@/lib/prompts/rag";
 import { getTextEmbedding } from "@/lib/embeddings";
+import {
+  checkAndCloseInactiveSection,
+  updateConversationActivity,
+  detectPurchaseIntent,
+  markConversationAsPurchased,
+  getPreviousSectionSummaries,
+  ensureCurrentSection,
+} from "@/lib/chat/session-manager";
 
 type Message = {
   role: "user" | "assistant" | "system";
@@ -29,10 +37,13 @@ export async function POST(req: NextRequest) {
     // Create or load conversation
     let conversationId: string | null = null;
     let conversationSummary: string | null = null;
+    let currentSectionNumber = 1;
+    let purchased = false;
+
     if (incomingConversationId) {
       const { data: conv, error: convErr } = await supabase
         .from("chat_conversations")
-        .select("id, summary")
+        .select("id, summary, current_section_number, purchased")
         .eq("id", incomingConversationId)
         .single();
       if (!conv || convErr) {
@@ -40,21 +51,79 @@ export async function POST(req: NextRequest) {
       }
       conversationId = conv.id;
       conversationSummary = (conv as any)?.summary ?? null;
+      purchased = (conv as any)?.purchased ?? false;
+
+      // Check if 5 minutes have passed since last activity
+      const { shouldCreateNewSection, currentSectionNumber: newSectionNumber } = 
+        await checkAndCloseInactiveSection(supabase, conv.id);
+
+      if (shouldCreateNewSection) {
+        currentSectionNumber = newSectionNumber;
+        // Update conversation with new section number
+        await supabase
+          .from("chat_conversations")
+          .update({ 
+            current_section_number: currentSectionNumber,
+            // Reset purchased if moving to a new section after purchase
+            purchased: purchased && currentSectionNumber > 1 ? false : purchased
+          })
+          .eq("id", conversationId);
+        
+        // If purchased and starting new section, reset the flag
+        if (purchased && currentSectionNumber === 1) {
+          purchased = false;
+        }
+      } else {
+        currentSectionNumber = (conv as any)?.current_section_number || 1;
+      }
     } else {
+      // New conversation
       const { data: conv, error: convErr } = await supabase
         .from("chat_conversations")
-        .insert({ user_id: userId, title: (query as string).slice(0, 80) })
-        .select("id, summary")
+        .insert({ 
+          user_id: userId, 
+          title: (query as string).slice(0, 80),
+          current_section_number: 1,
+          purchased: false,
+          last_activity_at: new Date().toISOString()
+        })
+        .select("id, summary, current_section_number, purchased")
         .single();
       if (convErr || !conv) throw new Error("create_conversation_failed");
       conversationId = conv.id;
       conversationSummary = (conv as any)?.summary ?? null;
+      currentSectionNumber = 1;
+      purchased = false;
     }
 
-    // Persist the user message immediately
+    // Guard against null conversationId
+    if (!conversationId) {
+      throw new Error("Failed to create or load conversation");
+    }
+
+    // Ensure current section exists in database
+    const sectionId = await ensureCurrentSection(supabase, conversationId, currentSectionNumber, purchased);
+
+    // Detect purchase intent in the user's message
+    const isPurchaseDetected = detectPurchaseIntent(query);
+    if (isPurchaseDetected && !purchased) {
+      await markConversationAsPurchased(supabase, conversationId);
+      purchased = true;
+      console.log("🛒 Purchase detected in message!");
+    }
+
+    // Persist the user message immediately with section link
     try {
-      await supabase.from("chat_messages").insert({ conversation_id: conversationId, role: "user", content: query }).select("id").single();
+      await supabase.from("chat_messages").insert({ 
+        conversation_id: conversationId, 
+        role: "user", 
+        content: query,
+        section_id: sectionId 
+      }).select("id").single();
     } catch {}
+
+    // Update last activity time
+    await updateConversationActivity(supabase, conversationId, currentSectionNumber);
 
     // Load recent history for this conversation (server-trusted under RLS)
     const { data: priorMessages } = await supabase
@@ -123,19 +192,16 @@ export async function POST(req: NextRequest) {
           .join("\n")
       : "No relevant products found.";
 
-    // 4. Call OpenAI with RAG context
-    // const trimmedHistory = conversationHistory.slice(-4);
+    // 4. Get previous section summaries for memory/context
+    const previousSectionsSummary = await getPreviousSectionSummaries(supabase, conversationId);
+    console.log("📝 Previous sections:", previousSectionsSummary ? "Found" : "None");
+
+    // 5. Call OpenAI with RAG context + section memory
     const messages: Message[] = [
       {
         role: "system",
-        content: buildRagSystemPrompt(context),
+        content: buildRagSystemPrompt(context, previousSectionsSummary),
       },
-      // ...(conversationSummary ? [{ role: "system", content: `Conversation summary: ${conversationSummary}` } as Message] : []),
-      // ...dbHistory as any,
-      // ...trimmedHistory.map((msg: any) => ({
-      //   role: msg.role,
-      //   content: msg.content,
-      // })),
       {
         role: "user",
         content: query,
@@ -146,7 +212,7 @@ export async function POST(req: NextRequest) {
     const openaiResp = await fetch(process.env.OPENAI_BASE_URL + "/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-      body: JSON.stringify({ model: process.env.OPENAI_MODEL, messages, temperature: 0.7, max_tokens: 500, stream: true }),
+      body: JSON.stringify({ model: process.env.OPENAI_MODEL, messages, stream: true }),
     });
 
     if (!openaiResp.ok || !openaiResp.body) {
@@ -222,9 +288,16 @@ export async function POST(req: NextRequest) {
         await new Promise((r) => setTimeout(r, 50));
         if (assistantBuffer.current.trim().length > 0) {
           try {
-            await supabase.from("chat_messages").insert({ conversation_id: conversationId, role: "assistant", content: assistantBuffer.current }).select("id").single();
+            await supabase.from("chat_messages").insert({ 
+              conversation_id: conversationId, 
+              role: "assistant", 
+              content: assistantBuffer.current,
+              section_id: sectionId 
+            }).select("id").single();
           } catch {}
-          await supabase.from("chat_conversations").update({ updated_at: new Date().toISOString() }).eq("id", conversationId);
+          
+          // Update conversation activity
+          await updateConversationActivity(supabase, conversationId, currentSectionNumber);
         }
 
         // Lightweight summarization trigger every ~12 messages
@@ -247,9 +320,7 @@ export async function POST(req: NextRequest) {
                 messages: [
                   { role: "system", content: "Summarize the conversation context in ≤60 words, keep key entities and intent." },
                   { role: "user", content: summaryInput },
-                ],
-                temperature: 0.2,
-                max_tokens: 120,
+                ]
               }),
             });
             const sumJson = await sumResp.json().catch(() => null);
