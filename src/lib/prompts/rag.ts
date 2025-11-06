@@ -9,6 +9,13 @@ export function buildRagSystemPrompt(_context: string, _previousSections?: strin
     "If the question is unrelated to products, say you can only help with products.",
     "Keep responses concise (≤ 160 words). Use bold names and prices when listing.",
     "When available, include the product image using markdown: ![Product Image](URL).",
+    "",
+    "ORDER PROCESS RULES:",
+    "- When customer provides delivery details (Name, Address, Phone), acknowledge and CONFIRM the order.",
+    "- DO NOT ask for delivery information again if already provided in current message.",
+    "- If customer says 'cash on delivery' or 'COD', accept it as payment method.",
+    "- After receiving complete details, say order is CONFIRMED and provide order summary.",
+    "- DO NOT repeatedly ask for the same information.",
   ];
 
   // Add previous conversation memory if available

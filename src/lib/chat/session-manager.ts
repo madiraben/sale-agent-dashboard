@@ -202,25 +202,66 @@ export function detectPurchaseIntent(message: string): boolean {
     "purchase",
     "order",
     "checkout",
+    "cash on delivery",
+    "cod",
     "yes, i'll take it",
     "i'll buy",
     "i want to buy",
+    "place the order",
+    "place order",
   ];
 
-  // Check for address-like patterns (street number, zip code, etc.)
-  const hasAddress = /\d+\s+\w+\s+(street|st|avenue|ave|road|rd|lane|ln|drive|dr|way|court|ct)/i.test(message);
+  // Delivery/shipping indicators
+  const deliveryKeywords = [
+    "delivery",
+    "shipping",
+    "ship to",
+    "deliver to",
+    "send to",
+    "my address",
+  ];
+
+  // Check for address-like patterns (more flexible for international addresses)
+  const hasAddress = /\b(address|location|destination|ship to|deliver to|send to)[:\s]/i.test(message) ||
+                     /\b\d+\s+\w+\s+(street|st|avenue|ave|road|rd|lane|ln|drive|dr|way|court|ct|blvd|plaza)/i.test(message) ||
+                     // Check for name field (common in order forms)
+                     /\b(name|customer name)[:\s]/i.test(message);
   
-  // Check for phone number patterns
-  const hasPhone = /(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/.test(message);
+  // Check for phone number patterns (more flexible international format)
+  const hasPhone = /(\+?\d{1,4}[-.\s]?)?(\(?\d{2,4}\)?[-.\s]?\d{2,4}[-.\s]?\d{2,4}[-.\s]?\d{0,4})/.test(message) ||
+                   /\b(phone|tel|mobile|contact)[:\s]/i.test(message);
   
   // Check for email
   const hasEmail = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/.test(message);
 
-  // Purchase is confirmed if we have confirmation keywords + contact info
+  // Check if message looks like delivery details (Name, Address, Phone format)
+  const looksLikeDeliveryDetails = /\b(name|address|phone|delivery|contact)[:\s\-]/i.test(message) &&
+                                    (hasPhone || hasAddress || hasEmail);
+
+  // Purchase is confirmed if:
+  // 1. Has confirmation keywords + contact info (original logic)
+  // 2. Message contains delivery details structure
+  // 3. Has delivery keywords + contact info
   const hasConfirmKeyword = confirmKeywords.some(keyword => lowerMessage.includes(keyword));
+  const hasDeliveryKeyword = deliveryKeywords.some(keyword => lowerMessage.includes(keyword));
   const hasContactInfo = hasAddress || hasPhone || hasEmail;
 
-  return hasConfirmKeyword && hasContactInfo;
+  const isPurchase = (hasConfirmKeyword && hasContactInfo) ||
+                     looksLikeDeliveryDetails ||
+                     (hasDeliveryKeyword && hasContactInfo);
+
+  if (isPurchase) {
+    console.log("🛒 Purchase detected:", {
+      hasConfirmKeyword,
+      hasDeliveryKeyword,
+      hasAddress,
+      hasPhone,
+      hasEmail,
+      looksLikeDeliveryDetails
+    });
+  }
+
+  return isPurchase;
 }
 
 /**
