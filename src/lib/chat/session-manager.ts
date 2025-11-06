@@ -58,7 +58,7 @@ export async function checkAndCloseInactiveSection(
  * This function collects ALL messages from the conversation that belong to this section,
  * creates a summary, and updates the section with final values
  */
-async function closeCurrentSection(
+export async function closeCurrentSection(
   supabase: SupabaseClient,
   conversationId: string,
   sectionNumber: number,

@@ -6,7 +6,9 @@ import {
   markConversationAsPurchased,
   getPreviousSectionSummaries,
   ensureCurrentSection,
+  closeCurrentSection,
 } from "./session-manager";
+import { processPurchase } from "./order-processor";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -148,14 +150,98 @@ export async function processExternalMessage(params: {
   const { messageText, tenantId, shopOwnerUserId } = params;
 
   // Get or create conversation
-  const { conversationId, currentSectionNumber, purchased, sectionId } =
+  let { conversationId, currentSectionNumber, purchased, sectionId } =
     await getOrCreateExternalConversation(params);
 
   // Detect purchase intent
   let isPurchaseDetected = detectPurchaseIntent(messageText);
-  if (isPurchaseDetected && !purchased) {
-    await markConversationAsPurchased(supabase, conversationId);
-    console.log("🛒 Purchase detected in external message!");
+  console.log(`🔍 Purchase check: detected=${isPurchaseDetected}, already purchased=${purchased}`);
+  
+  // ALWAYS process order when purchase is detected, even if marked as purchased
+  // This handles cases where purchase was detected but order creation failed
+  if (isPurchaseDetected) {
+    console.log("🛒 Purchase detected! Processing order and closing section...");
+    
+    // Get ALL messages from current section for order processing
+    const { data: messages } = await supabase
+      .from("chat_messages")
+      .select("role, content")
+      .eq("conversation_id", conversationId)
+      .eq("section_id", sectionId)
+      .order("created_at", { ascending: true });
+    
+    console.log(`📋 Found ${messages?.length || 0} messages in current section for order processing`);
+    
+    const conversationSummary = messages
+      ?.map((m: any) => `${m.role}: ${m.content}`)
+      .join("\n") || "";
+    
+    // Process purchase: create customer and order
+    if (tenantId) {
+      console.log("💳 Processing purchase with tenant:", tenantId);
+      const { customerId, orderId } = await processPurchase({
+        supabase,
+        purchaseMessage: messageText,
+        conversationSummary,
+        tenantId,
+      });
+      
+      if (customerId && orderId) {
+        console.log("✅ Order created:", orderId, "for customer:", customerId);
+      } else {
+        console.warn("⚠️  Order processing completed but no order/customer created");
+      }
+    } else {
+      console.warn("⚠️  No tenant_id provided, skipping order creation");
+    }
+    
+    // Only close section and reset if not already purchased
+    if (!purchased) {
+      // Close the current section immediately (don't wait 5 minutes)
+      await closeCurrentSection(supabase, conversationId, currentSectionNumber, true); // true = purchased
+      
+      // Mark conversation as purchased
+      await markConversationAsPurchased(supabase, conversationId);
+      
+      // Start new section 1 (reset after purchase)
+      currentSectionNumber = 1;
+      purchased = false; // Reset for new section
+      
+      // Update conversation to new section
+      await supabase
+        .from("chat_conversations")
+        .update({ 
+          current_section_number: 1,
+          purchased: false,
+          last_activity_at: new Date().toISOString()
+        })
+        .eq("id", conversationId);
+      
+      // Create new section
+      const { data: newSection } = await supabase
+        .from("chat_sections")
+        .insert({
+          conversation_id: conversationId,
+          section_number: 1,
+          purchased: false,
+          started_at: new Date().toISOString(),
+        })
+        .select("id")
+        .single();
+      
+      // Update sectionId for storing the current message in the new section
+      sectionId = newSection?.id || sectionId;
+      console.log("✅ New section created after purchase:", sectionId);
+      
+      return {
+        conversationId,
+        sectionId: sectionId,
+        previousSectionsSummary: await getPreviousSectionSummaries(supabase, conversationId),
+        isPurchaseDetected,
+      };
+    } else {
+      console.log("⚠️  Purchase already processed for this conversation, skipping section reset");
+    }
   }
 
   // Store the user message
