@@ -28,7 +28,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
     .select("is_active")
     .limit(1)
     .single();
-  const isActive = (tenant as any)?.is_active ?? false;
+  
+  // ============================================================
+  // DEVELOPMENT MODE: Billing/Payment is disabled
+  // Set isActive to true to bypass payment requirements
+  // TO RE-ENABLE PAYMENTS: Change this line back to: (tenant as any)?.is_active ?? false
+  // ============================================================
+  const isActive = true; // Development: bypass billing checks
+  // const isActive = (tenant as any)?.is_active ?? false; // Production: enable this line
   const items: SidebarItem[] = [
     {  href: "/dashboard", label: "Dashboard", icon: <MdDashboard />   },
     {  href: "/dashboard/sales", label: "Sales", icon:< MdShoppingCart/> },

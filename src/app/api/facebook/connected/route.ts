@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { unsubscribePageFromApp } from "@/lib/facebook/transport";
 
 const GRAPH_VER = process.env.FB_GRAPH_VERSION || "v20.0";
 
@@ -33,8 +34,9 @@ export async function GET(req: NextRequest) {
         } as any;
       }
     }
-  } catch {
+  } catch (error){
     // ignore profile fetch errors
+    console.error("Error fetching profile:", error as Error);
   }
 
   try {
@@ -49,11 +51,13 @@ export async function GET(req: NextRequest) {
       const pRes = await fetch(picUrl.toString(), { cache: "no-store" });
       if (pRes.ok) {
         const pj = await pRes.json();
-        page_picture = pj?.data?.url || null;
+        page_picture = pj?.data?.url || null; 
       }
     }
-  } catch {
+  } catch (error){
     // ignore page picture fetch errors
+    console.error("Error fetching page picture:", error as Error);
+    return NextResponse.json({ error: "error_fetching_page_picture" }, { status: 500 });
   }
 
   try {
@@ -101,10 +105,48 @@ export async function GET(req: NextRequest) {
 }
 
 export async function DELETE() {
+  try {
+    // Remove all connected pages for this user and unsubscribe webhooks
+    const supabase = await createSupabaseServerClient();
+    const { data: u } = await supabase.auth.getUser();
+    const userId = u.user?.id;
+
+    if (userId) {
+      const { data: rows } = await supabase
+        .from("facebook_pages")
+        .select("page_id,page_token")
+        .eq("user_id", userId);
+
+      // Attempt to unsubscribe each page from the app before deletion (best-effort)
+      if (Array.isArray(rows)) {
+        await Promise.all(rows.map(async (r: any) => {
+          try {
+            if (r?.page_token && r?.page_id) {
+              await unsubscribePageFromApp(r.page_token as string, r.page_id as string);
+            }
+          } catch (erorr){
+            // ignore unsubscribe failures
+            console.error("Error unsubscribing page from app:", erorr as Error);
+            return { id: r.page_id as string, name: (r.page_name as string) || null, picture: null };
+          }
+        }));
+      }
+
+      // Delete all rows for the user
+      await supabase.from("facebook_pages").delete().eq("user_id", userId);
+    }
+  } catch (error) {
+    // ignore server-side cleanup errors; still clear cookies below
+    console.error("Error deleting Facebook pages:", error as Error); 
+  }
+
+  // Clear all Facebook-related cookies
   const res = NextResponse.json({ ok: true });
   res.cookies.set({ name: "fb_page_id", value: "", maxAge: 0, path: "/" });
   res.cookies.set({ name: "fb_page_name", value: "", maxAge: 0, path: "/" });
   res.cookies.set({ name: "fb_page_token", value: "", maxAge: 0, path: "/" });
+  res.cookies.set({ name: "fb_user_token", value: "", maxAge: 0, path: "/" });
+  res.cookies.set({ name: "fb_oauth_state", value: "", maxAge: 0, path: "/" });
   return res;
 }
 

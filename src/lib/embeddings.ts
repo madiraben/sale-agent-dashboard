@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
+import logger from "./logger";
 
-async function getAccessTokenFromServiceAccount(): Promise<string> {
+async function getAccessTokenFromServiceAccount(): Promise<string> { try {
   const clientEmail = process.env.GOOGLE_CLOUD_CLIENT_EMAIL;
   const privateKey = process.env.GOOGLE_CLOUD_PRIVATE_KEY?.replace(/\\n/g, "\n");
 
@@ -37,6 +38,10 @@ async function getAccessTokenFromServiceAccount(): Promise<string> {
   const data = await resp.json();
   if (!resp.ok) throw new Error(data?.error_description || data?.error || "token_exchange_failed");
   return data.access_token as string;
+} catch (error) {
+  logger.error("Error getting access token from service account:", error as Error);
+  throw error;
+}
 }
 
 function normalizeVector(vector: number[]): number[] {
@@ -46,6 +51,8 @@ function normalizeVector(vector: number[]): number[] {
 
 export async function getTextEmbedding(text: string): Promise<number[]> {
       if (!text || !text.trim()) throw new Error("text_required");
+      try {
+      logger.info("Received text for text embedding:", text);
       const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
       const location = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
       if (!projectId) throw new Error("GOOGLE_CLOUD_PROJECT_ID not set in environment");
@@ -87,8 +94,13 @@ export async function getTextEmbedding(text: string): Promise<number[]> {
       }
       const first = predictions[0] || {};
       const textEmbedding = first.textEmbedding ? normalizeVector(first.textEmbedding as number[]) : null;
-      if (!textEmbedding) throw new Error("no_text_embedding");
-      return textEmbedding as number[];
+      // logger.info("Normalized text embedding:", textEmbedding);
+        if (!textEmbedding) throw new Error("no_text_embedding");
+        return textEmbedding as number[];
+      } catch (error) {
+        logger.error("Error getting text embedding:", error as Error);
+        throw error;
+      }
     }
 
 

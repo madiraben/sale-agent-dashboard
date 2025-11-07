@@ -9,9 +9,10 @@ import TextArea from "@/components/ui/text-area";
 import ImageUploader from "@/components/ui/image-uploader";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { Category, Currency } from "@/types"; 
+import { Category, Currency, MultimodalEmbeddingResponse } from "@/types"; 
 import { toast } from "react-toastify";
 import LoadingScreen from "@/components/loading-screen";
+import logger from "@/lib/logger";
 export default function Detail() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -33,6 +34,17 @@ export default function Detail() {
   const [imageFile, setImageFile] = React.useState<File | null>(null);
   const [categories, setCategories] = React.useState<Category[]>([]);
 
+  // Store original values to detect changes for embedding regeneration
+  const [originalProduct, setOriginalProduct] = React.useState<{
+    name: string;
+    sku: string;
+    size: string;
+    price: number;
+    categoryId: string | null;
+    description: string;
+    imageUrl: string | null;
+  } | null>(null);
+
   React.useEffect(() => {
     if (!id) return setLoading(false);
     async function load() {
@@ -46,20 +58,44 @@ export default function Detail() {
         supabase.from("product_categories").select("id,name").order("name", { ascending: true }),
       ]);
       if (p) {
-        setName((p as any).name ?? "");
-        setSku((p as any).sku ?? "");
-        setSize((p as any).size ?? "");
-        setPrice(Number((p as any).price ?? 0));
+        const productData = {
+          name: (p as any).name ?? "",
+          sku: (p as any).sku ?? "",
+          size: (p as any).size ?? "",
+          price: Number((p as any).price ?? 0),
+          categoryId: (p as any).category_id ?? null,
+          description: (p as any).description ?? "",
+          imageUrl: (p as any).image_url ?? null,
+        };
+        setName(productData.name);
+        setSku(productData.sku);
+        setSize(productData.size);
+        setPrice(productData.price);
         setStock(Number((p as any).stock ?? 0));
-        setCategoryId((p as any).category_id ?? null);
-        setDescription((p as any).description ?? "");
-        setImageUrl((p as any).image_url ?? null);
+        setCategoryId(productData.categoryId);
+        setDescription(productData.description);
+        setImageUrl(productData.imageUrl);
+        // Store original values for change detection
+        setOriginalProduct(productData);
       }
       setCategories((cats as any) ?? []);
       setLoading(false);
     }
     load();
   }, [id]);
+
+  function composeEmbeddingText(): string {
+    const categoryName = categories.find((c) => c.id === categoryId)?.name ?? "";
+    const parts = [
+      name,
+      sku ? `SKU: ${sku}` : null,
+      size ? `Size: ${size}` : null,
+      categoryName ? `Category: ${categoryName}` : null,
+      `Price: ${Currency(price)}`,
+      description.trim() || null,
+    ].filter(Boolean) as string[];
+    return parts.join("\n");
+  }
 
   async function onSave() {
     if (!id) return;
@@ -87,8 +123,73 @@ export default function Detail() {
         })
         .eq("id", id);
       if (error) throw error;
+
+      // Regenerate embedding if relevant fields changed
+      if (originalProduct) {
+        const changedText =
+          originalProduct.name !== name.trim() ||
+          originalProduct.sku !== sku.trim() ||
+          originalProduct.size !== size.trim() ||
+          originalProduct.categoryId !== categoryId ||
+          originalProduct.price !== price ||
+          (originalProduct.description ?? "") !== (description.trim() || "");
+        const changedImage = finalImageUrl !== originalProduct.imageUrl;
+        
+        if (changedText || changedImage) {
+          // Attempt to regenerate embeddings in the background
+          // Strategy: Try text-only first (more reliable), skip image embeddings for now
+          try {
+            logger.info("Regenerating embeddings for product: %s", id);
+            logger.info("Using text-only embedding (image embeddings disabled due to Vertex AI limitations)");
+            
+            const textOnlyRes = await fetch("/api/embeddings/multimodal", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ text: composeEmbeddingText() }),
+            });
+            
+            const data = (await textOnlyRes.json()) as MultimodalEmbeddingResponse;
+            logger.info("Embedding API response:", { status: textOnlyRes.status, data });
+            
+            if (textOnlyRes.ok && (data.embedding || data.textEmbedding || data.imageEmbedding)) {
+              const combined = data.embedding ?? data.textEmbedding ?? data.imageEmbedding;
+              await supabase.from("products").update({ embedding: combined }).eq("id", id);
+              toast.success("Product and embeddings updated successfully");
+            } else if (!textOnlyRes.ok) {
+              const errorMsg = data.error || "Unknown error";
+              const errorDetails = data.details || "";
+              logger.error("Embedding generation failed:", errorMsg, errorDetails);
+              toast.warning(`Product updated, but embedding generation failed: ${errorMsg}`);
+            } else {
+              logger.warn("No embeddings returned from API");
+              toast.success("Product updated (no embeddings generated)");
+            }
+          } catch (embErr) {
+            logger.error("Embedding regeneration error:", embErr);
+            const errorMessage = embErr instanceof Error ? embErr.message : "Unknown error";
+            toast.warning(`Product updated, but embedding generation failed: ${errorMessage}`);
+          }
+        } else {
+          toast.success("Product updated successfully");
+        }
+      } else {
+        toast.success("Product updated successfully");
+      }
+
+      // Update stored values
       setImageUrl(finalImageUrl ?? null);
       setImageFile(null);
+      setOriginalProduct({
+        name: name.trim(),
+        sku: sku.trim(),
+        size: size.trim(),
+        price,
+        categoryId,
+        description: description.trim() || "",
+        imageUrl: finalImageUrl,
+      });
+    } catch (err) {
+      toast.error((err as Error).message || "Failed to save product");
     } finally {
       setSaving(false);
     }
@@ -100,7 +201,8 @@ export default function Detail() {
     try {
       const { error } = await supabase.from("products").delete().eq("id", id);
       if (error) {
-        toast.error(error.message as string || "Delete failed");
+        logger.error("Delete failed");
+        toast.error(error.message as string);
         return;
       } else {
         toast.success("Product deleted successfully");  

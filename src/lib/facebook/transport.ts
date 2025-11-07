@@ -1,13 +1,14 @@
 import { appConfig } from "@/lib/config";
 
-export async function sendMessengerText(pageToken: string, recipientId: string, text: string) {
+export async function sendMessengerText(pageToken: string, recipientId: string, text: string): Promise<boolean> {
   const url = new URL(`https://graph.facebook.com/${appConfig.fbGraphVersion}/me/messages`);
   url.searchParams.set("access_token", pageToken);
-  await fetch(url.toString(), {
+  const resp = await fetch(url.toString(), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ recipient: { id: recipientId }, message: { text } }),
   });
+  return Boolean(resp.ok && resp.status === 200);
 }
 
 export async function subscribePageToApp(pageToken: string, pageId: string) {

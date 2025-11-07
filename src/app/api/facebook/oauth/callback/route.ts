@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
   const state = url.searchParams.get("state");
 
   const settingsUrl = `${appUrl || ""}/dashboard/setting`;
+  const successUrl = `${appUrl || ""}/dashboard`;
 
   if (!appId || !appSecret || !appUrl) {
     const redirect = new URL(settingsUrl);
@@ -36,7 +37,11 @@ export async function GET(req: NextRequest) {
       return res;
     }
 
-    const redirectUri = `${appUrl}/api/facebook/oauth/callback`;
+    const baseRedirectUri = `${appUrl}/api/facebook/oauth/callback`;
+    // Match the redirect_uri used in the auth start step, including ngrok skip param
+    const redirectUri = appUrl.includes("ngrok-free.app")
+      ? `${baseRedirectUri}?ngrok-skip-browser-warning=true`
+      : baseRedirectUri;
 
     // Step 1: Exchange code for short-lived user token
     const tokenUrl = new URL(`https://graph.facebook.com/${ver}/oauth/access_token`);
@@ -75,14 +80,14 @@ export async function GET(req: NextRequest) {
     const longJson = await longResp.json();
     const longLivedToken: string | undefined = longJson.access_token;
 
-    const redirect = new URL(settingsUrl);
     if (!longLivedToken) {
+      const redirect = new URL(settingsUrl);
       redirect.searchParams.set("fb_error", "no_long_token");
       return NextResponse.redirect(redirect.toString());
     }
 
-    // Set httpOnly cookie so server routes can list pages and connect one
-    const res = NextResponse.redirect(redirect.toString());
+    // Set httpOnly cookie then redirect to dashboard on success
+    const res = NextResponse.redirect(new URL(successUrl).toString());
     // clear state cookie
     res.cookies.set({ name: "fb_oauth_state", value: "", maxAge: 0, path: "/" });
     res.cookies.set({

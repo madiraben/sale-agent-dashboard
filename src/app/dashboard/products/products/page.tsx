@@ -13,6 +13,7 @@ import TextArea from "@/components/ui/text-area";
 import ImageUploader from "@/components/ui/image-uploader";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { toast } from "react-toastify";
+import logger from "@/lib/logger";
 export default function Product() {
   const supabase = React.useMemo(() => createSupabaseBrowserClient(), []);
   const router = useRouter();
@@ -262,6 +263,11 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
         }
 
         // 2) Build embedding payload and call API
+        // ============================================================
+        // DEVELOPMENT MODE: Automatic embeddings temporarily disabled
+        // TO RE-ENABLE: Uncomment the code below and set up Google Cloud credentials
+        // ============================================================
+        /* EMBEDDINGS DISABLED FOR DEVELOPMENT
         try {
           let imageBase64: string | undefined;
           if (imageFile) {
@@ -291,6 +297,7 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
             await supabase.from("products").update({ embedding: combined }).eq("id", inserted.id);
           }
         } catch {}
+        */
       }
       setSaving(false);
       onClose();
@@ -314,20 +321,28 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
       const changedImage = (publicUrl ?? editing.image_url) !== editing.image_url;
       if (changedText || changedImage) {
         try {
+          // Use text-only embeddings to avoid image validation issues
+          logger.info("Regenerating text-only embeddings for product: %s", editing.id);
           const res = await fetch("/api/embeddings/multimodal", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               text: composeEmbeddingText(),
-              ...((publicUrl ?? editing.image_url) ? { imageUrl: (publicUrl ?? editing.image_url)! } : {}),
             }),
           });
           const data = (await res.json()) as MultimodalEmbeddingResponse;
           if (res.ok && (data.embedding || data.textEmbedding || data.imageEmbedding)) {
             const combined = data.embedding ?? data.textEmbedding ?? data.imageEmbedding;
             await supabase.from("products").update({ embedding: combined }).eq("id", editing.id);
+            logger.info("Embeddings updated successfully for product: %s", editing.id);
+          } else {
+            logger.warn("Failed to update embeddings: %s", data);
+            toast.warning("Failed to update embeddings");
           }
-        } catch {}
+        } catch (embErr) {
+          logger.error("Embedding regeneration failed: %s", embErr);
+          toast.error("Embedding regeneration failed");
+        }
       }
       setSaving(false);
       onClose();
@@ -357,10 +372,10 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
             <TextField label="Image height (px)" type="number" placeholder="e.g. 600" value={imageHeight} onChange={(e) => setImageHeight(e.target.value)} />
           </div>
         </div>
-        <TextField label="Name" placeholder="Product name" value={name} onChange={(e) => setName(e.target.value)} />
+        <TextField label="Name" placeholder="Product name" value={name} onChange={(e) => setName(e.target.value)} required />
         <div className="grid grid-cols-2 gap-4">
-          <TextField label="SKU" placeholder="SKU" value={sku} onChange={(e) => setSku(e.target.value)} />
-          <TextField label="Size" placeholder="Size" value={size} onChange={(e) => setSize(e.target.value)} />
+          <TextField label="SKU" placeholder="SKU" value={sku} onChange={(e) => setSku(e.target.value)} required />
+          <TextField label="Size" placeholder="Size" value={size} onChange={(e) => setSize(e.target.value)} required />
           <div>
             <div className="mb-1 text-sm text-gray-700">Category</div>
             <select
@@ -376,10 +391,10 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <TextField label="Price" type="number" placeholder="0.00" value={price} onChange={(e) => setPrice(e.target.value)} />
-          <TextField label="Stock" type="number" placeholder="0" value={stock} onChange={(e) => setStock(e.target.value)} />
+          <TextField label="Price" type="number" placeholder="0.00" value={price} onChange={(e) => setPrice(e.target.value)} required />
+          <TextField label="Stock" type="number" placeholder="0" value={stock} onChange={(e) => setStock(e.target.value)} required />
         </div>
-        <TextArea label="Description" rows={4} placeholder="Describe the product..." value={description} onChange={(e) => setDescription(e.target.value)} />
+        <TextArea label="Description" rows={4} placeholder="Describe the product..." value={description} onChange={(e) => setDescription(e.target.value)} required />
       </div>
     </SideDrawer>
   );

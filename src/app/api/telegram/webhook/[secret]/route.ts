@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { getTenantIdsForUser } from "@/lib/facebook/repository";
-import { runRagForUserTenants } from "@/lib/rag/engine";
-import { sendTelegramText } from "@/lib/telegram/transport";
+import { handleTelegramText } from "@/lib/chat/orchestrator";
 
 type TelegramMessage = {
   message?: {
@@ -30,13 +28,9 @@ export async function POST(req: NextRequest, context: { params: Promise<{ secret
   const chatId = body?.message?.chat?.id;
   if (!text || !chatId) return NextResponse.json({ ok: true });
 
-  try {
-    const userId = (bot as any).user_id as string;
-    const tenantIds = await getTenantIdsForUser(userId);
-    if (tenantIds.length === 0) return NextResponse.json({ ok: true });
-    const reply = await runRagForUserTenants(userId, tenantIds, text);
-    await sendTelegramText((bot as any).bot_token as string, chatId, reply);
-  } catch {}
+  const userId = (bot as any).user_id as string;
+  const botToken = (bot as any).bot_token as string;
+  await handleTelegramText(userId, botToken, chatId, text);
 
   return NextResponse.json({ ok: true });
 }

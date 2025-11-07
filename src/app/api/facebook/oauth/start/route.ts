@@ -8,7 +8,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "facebook_oauth_not_configured" }, { status: 500 });
   }
   const ver = process.env.FB_GRAPH_VERSION || "v20.0";
-  const redirectUri = `${appUrl}/api/facebook/oauth/callback`;
+  const baseRedirectUri = `${appUrl}/api/facebook/oauth/callback`;
+  // If using free ngrok, append skip warning query to avoid interstitial during OAuth
+  const redirectUri = appUrl.includes("ngrok-free.app")
+    ? `${baseRedirectUri}?ngrok-skip-browser-warning=true`
+    : baseRedirectUri;
   const url = new URL(`https://www.facebook.com/${ver}/dialog/oauth`);
   url.searchParams.set("client_id", appId);
   url.searchParams.set("redirect_uri", redirectUri);
