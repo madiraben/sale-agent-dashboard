@@ -5,6 +5,8 @@ import {
   addToCart, 
   clearCart, 
   isCartEmpty,
+  removeFromCart,
+  updateCartItemQty,
   getRecentConversation,
   CartItem 
 } from "./session";
@@ -18,7 +20,7 @@ import {
   Product 
 } from "./product-search";
 import { validateProductTopic, getOffTopicResponse, isObviouslyOffTopic } from "./topic-validator";
-import * as Messages from "./messages";
+import { generateAIResponse } from "./ai-responder";
 import logger from "../logger";
 
 export type StageResponse = {
@@ -45,8 +47,15 @@ export async function handleDiscoveringStage(
 
   // Handle cancel/reset
   if (extracted.intent === "cancel") {
+    const reply = await generateAIResponse({
+      stage: "discovering",
+      userMessage: userText,
+      conversationHistory: conversationContext,
+      systemContext: "Customer cancelled their order. Cart has been cleared. Ask how you can help them now.",
+    });
+
     return {
-      reply: "No problem! Your cart has been cleared. How else can I help you?",
+      reply,
       newStage: "discovering",
       updatedCart: clearCart(),
       updatedPendingProducts: undefined,
@@ -66,6 +75,8 @@ export async function handleDiscoveringStage(
 
     // Validate topic using AI (more thorough check)
     const topicValidation = await validateProductTopic(userText);
+
+    logger.info("Topic validation:", topicValidation);
     
     if (!topicValidation.isOnTopic && topicValidation.confidence > 0.6) {
       logger.info("Off-topic query detected", { 
@@ -78,17 +89,215 @@ export async function handleDiscoveringStage(
       };
     }
 
-    // Topic is valid, proceed with RAG
-    const ragReply = await runRagForUserTenants(tenantIds, userText);
-    let reply = ragReply;
+    // Check if user is asking specifically about their cart
+    const isCartQuery = isAskingAboutCart(userText);
     
-    // If cart has items, remind user
+    if (isCartQuery) {
+      logger.info("Cart-specific query detected");
+      
+      if (isCartEmpty(session.cart)) {
+        const reply = await generateAIResponse({
+          stage: "discovering",
+          userMessage: userText,
+          conversationHistory: conversationContext,
+          systemContext: "Customer asked about their cart, but cart is empty. Let them know cart is empty and ask what they'd like to order.",
+        });
+        
+        return {
+          reply,
+          newStage: "discovering",
+        };
+      }
+      
+      // Show cart contents with AI-generated response
+      const cartProducts = await getCartProducts(tenantIds, session.cart);
+      const cartSummary = formatCartDisplay(cartProducts);
+      
+      const reply = await generateAIResponse({
+        stage: "discovering",
+        userMessage: userText,
+        conversationHistory: conversationContext,
+        cartSummary,
+        systemContext: "Customer asked about their cart. Show them what's in their cart and ask if they want to add more items, modify, or proceed to checkout.",
+      });
+      
+      return {
+        reply,
+        newStage: "discovering",
+      };
+    }
+
+    // Check if user is asking to browse/see products (not a specific search)
+    const isBrowsingQuery = isAskingToBrowseProducts(userText);
+    
+    if (isBrowsingQuery) {
+      logger.info("Product browsing query detected - searching actual products");
+      
+      // Extract category/type if mentioned (shirt, shoes, etc.)
+      const searchTerm = extractProductTypeFromQuery(userText);
+      const products = await searchProducts(tenantIds, searchTerm || "");
+      
+      if (products.length === 0) {
+        const reply = await generateAIResponse({
+          stage: "discovering",
+          userMessage: userText,
+          conversationHistory: conversationContext,
+          systemContext: "No products found in database. Let customer know we don't have products available right now and apologize.",
+        });
+        
+        return {
+          reply,
+          newStage: "discovering",
+        };
+      }
+      
+      // Format actual products from database
+      let productList = products.slice(0, 10).map((p, idx) => 
+        `${idx + 1}. **${p.name}** - $${p.price.toFixed(2)}${p.description ? `\n   - ${p.description.substring(0, 80)}${p.description.length > 80 ? '...' : ''}` : ''}`
+      ).join('\n\n');
+      
+      const reply = await generateAIResponse({
+        stage: "discovering",
+        userMessage: userText,
+        conversationHistory: conversationContext,
+        productResults: productList,
+        systemContext: `Customer wants to browse products. Show them these REAL products from our database. Ask which one they'd like to add to their cart. DO NOT make up or invent products - only show what's provided.`,
+      });
+      
+      return {
+        reply,
+        newStage: "discovering",
+      };
+    }
+
+    // Topic is valid, proceed with RAG for product questions
+    const ragReply = await runRagForUserTenants(tenantIds, userText);
+    
+    // If cart has items, remind user after answering their question
     if (!isCartEmpty(session.cart)) {
       const cartProducts = await getCartProducts(tenantIds, session.cart);
       const cartSummary = formatCartDisplay(cartProducts);
-      reply += `\n\n📦 Your cart:\n${cartSummary}\n\nReady to checkout? Just say "checkout" or "confirm order"!`;
+      
+      const reply = await generateAIResponse({
+        stage: "discovering",
+        userMessage: userText,
+        conversationHistory: conversationContext,
+        cartSummary,
+        systemContext: `Answer customer's question: ${ragReply}\n\nThen remind them about their cart and suggest they can continue shopping or checkout.`,
+      });
+      
+      return {
+        reply,
+        newStage: "discovering",
+      };
     }
     
+    // No cart items, just return RAG answer with AI response
+    const reply = await generateAIResponse({
+      stage: "discovering",
+      userMessage: userText,
+      conversationHistory: conversationContext,
+      systemContext: `Answer from knowledge base: ${ragReply}\n\nProvide this answer naturally and ask if they need help with anything else.`,
+    });
+    
+    return {
+      reply,
+      newStage: "discovering",
+    };
+  }
+
+  // Handle cart modifications (remove items, change quantities)
+  if (extracted.intent === "modify_cart") {
+    logger.info("Modify cart intent detected");
+
+    if (isCartEmpty(session.cart)) {
+      const reply = await generateAIResponse({
+        stage: "discovering",
+        userMessage: userText,
+        conversationHistory: conversationContext,
+        systemContext: "Customer wants to modify cart but it's empty. Let them know and ask what they'd like to order.",
+      });
+
+      return {
+        reply,
+        newStage: "discovering",
+      };
+    }
+
+    // Detect what kind of modification (remove, change quantity, clear all)
+    const modification = detectCartModification(userText, session.cart);
+    
+    if (modification.action === "remove" && modification.productId) {
+      // Remove specific item
+      const itemToRemove = session.cart.find(item => item.product_id === modification.productId);
+      const updatedCart = removeFromCart(session.cart, modification.productId);
+      
+      const cartProducts = updatedCart.length > 0 ? await getCartProducts(tenantIds, updatedCart) : [];
+      const cartDisplay = updatedCart.length > 0 ? formatCartDisplay(cartProducts) : "";
+      
+      const reply = await generateAIResponse({
+        stage: "discovering",
+        userMessage: userText,
+        conversationHistory: conversationContext,
+        cartSummary: cartDisplay,
+        systemContext: `Successfully removed "${itemToRemove?.name}" from cart. ${updatedCart.length > 0 ? 'Show updated cart and ask if they want to continue shopping or checkout.' : 'Cart is now empty. Ask what they would like to order.'}`,
+      });
+
+      return {
+        reply,
+        newStage: "discovering",
+        updatedCart,
+      };
+    }
+    
+    if (modification.action === "change_quantity" && modification.productId && modification.newQuantity) {
+      // Update quantity
+      const updatedCart = updateCartItemQty(session.cart, modification.productId, modification.newQuantity);
+      const cartProducts = await getCartProducts(tenantIds, updatedCart);
+      const cartDisplay = formatCartDisplay(cartProducts);
+      
+      const reply = await generateAIResponse({
+        stage: "discovering",
+        userMessage: userText,
+        conversationHistory: conversationContext,
+        cartSummary: cartDisplay,
+        systemContext: `Updated item quantity to ${modification.newQuantity}. Show updated cart and ask if they need anything else.`,
+      });
+
+      return {
+        reply,
+        newStage: "discovering",
+        updatedCart,
+      };
+    }
+    
+    if (modification.action === "clear_all") {
+      const reply = await generateAIResponse({
+        stage: "discovering",
+        userMessage: userText,
+        conversationHistory: conversationContext,
+        systemContext: "Customer wants to clear their entire cart. Confirm cart has been cleared and ask what they'd like to order.",
+      });
+
+      return {
+        reply,
+        newStage: "discovering",
+        updatedCart: clearCart(),
+      };
+    }
+
+    // If we couldn't determine specific action, show cart and ask for clarification
+    const cartProducts = await getCartProducts(tenantIds, session.cart);
+    const cartDisplay = formatCartDisplay(cartProducts);
+    
+    const reply = await generateAIResponse({
+      stage: "discovering",
+      userMessage: userText,
+      conversationHistory: conversationContext,
+      cartSummary: cartDisplay,
+      systemContext: "Customer wants to modify cart but request was unclear. Show current cart and ask what specific changes they want (remove item, change quantity, etc.).",
+    });
+
     return {
       reply,
       newStage: "discovering",
@@ -130,8 +339,15 @@ export async function handleDiscoveringStage(
       
       // If still no items, ask for clarification
       if (!extracted.items || extracted.items.length === 0) {
+        const reply = await generateAIResponse({
+          stage: "discovering",
+          userMessage: userText,
+          conversationHistory: conversationContext,
+          systemContext: "Customer wants to order but didn't specify which products. Ask them what they'd like to order.",
+        });
+
         return {
-          reply: "I'd be happy to help you order! What products would you like? You can tell me the product names and quantities.",
+          reply,
           newStage: "discovering",
         };
       }
@@ -148,8 +364,16 @@ export async function handleDiscoveringStage(
     }
 
     if (productSearches.length === 0) {
+      const productNames = extracted.items.map(i => i.name).join(", ");
+      const reply = await generateAIResponse({
+        stage: "discovering",
+        userMessage: userText,
+        conversationHistory: conversationContext,
+        systemContext: `No products found matching: "${productNames}". Apologize and suggest they describe differently or ask what products are available.`,
+      });
+
       return {
-        reply: Messages.getProductNotFoundMessage(userText, extracted.items.map(i => i.name)),
+        reply,
         newStage: "discovering",
       };
     }
@@ -176,26 +400,40 @@ export async function handleDiscoveringStage(
       const cartProducts = await getCartProducts(tenantIds, updatedCart);
       const cartDisplay = formatCartDisplay(cartProducts);
       
-        return {
-          reply: Messages.getCartAddedMessage(userText, cartDisplay),
-          newStage: "discovering",
-          updatedCart,
-          updatedPendingProducts: undefined,
-        };
+      const reply = await generateAIResponse({
+        stage: "discovering",
+        userMessage: userText,
+        conversationHistory: conversationContext,
+        cartSummary: cartDisplay,
+        systemContext: "Products successfully added to cart! Show enthusiasm. Ask if they want to add more items or proceed to checkout.",
+      });
+
+      return {
+        reply,
+        newStage: "discovering",
+        updatedCart,
+        updatedPendingProducts: undefined,
+      };
     }
 
     // Multiple matches - need user to select
-    let reply = "I found several products that might match what you're looking for:\n\n";
+    let productResults = "";
     
     productSearches.forEach((search, idx) => {
-      reply += `For "${search.query}":\n`;
+      productResults += `For "${search.query}":\n`;
       search.results.forEach((product, pIdx) => {
-        reply += `  ${pIdx + 1}. ${product.name} - $${product.price.toFixed(2)}\n`;
+        productResults += `  ${pIdx + 1}. ${product.name} - $${product.price.toFixed(2)}\n`;
       });
-      reply += "\n";
+      productResults += "\n";
     });
     
-    reply += "Please tell me which products you'd like (e.g., 'I want product 1 for query A and product 2 for query B'), or describe them more specifically.";
+    const reply = await generateAIResponse({
+      stage: "confirming_products",
+      userMessage: userText,
+      conversationHistory: conversationContext,
+      productResults,
+      systemContext: "Multiple products found. Show the options and ask customer to specify which one they want.",
+    });
     
     return {
       reply,
@@ -207,8 +445,15 @@ export async function handleDiscoveringStage(
   // Handle checkout initiation
   if (extracted.intent === "confirm_order") {
     if (isCartEmpty(session.cart)) {
+      const reply = await generateAIResponse({
+        stage: "discovering",
+        userMessage: userText,
+        conversationHistory: conversationContext,
+        systemContext: "Customer tried to checkout but cart is empty. Let them know and ask what they'd like to order.",
+      });
+
       return {
-        reply: Messages.getEmptyCartMessage(userText),
+        reply,
         newStage: "discovering",
       };
     }
@@ -217,15 +462,31 @@ export async function handleDiscoveringStage(
     const cartProducts = await getCartProducts(tenantIds, session.cart);
     const cartDisplay = formatCartDisplay(cartProducts);
     
+    const reply = await generateAIResponse({
+      stage: "confirming_order",
+      userMessage: userText,
+      conversationHistory: conversationContext,
+      cartSummary: cartDisplay,
+      systemContext: "Customer wants to checkout. Show their cart and ask them to confirm the order (yes/no).",
+    });
+    
     return {
-      reply: Messages.getCartConfirmMessage(userText, cartDisplay),
+      reply,
       newStage: "confirming_order",
     };
   }
 
-  // Default fallback
+  // Default fallback - greeting or general help
+  const reply = await generateAIResponse({
+    stage: "discovering",
+    userMessage: userText,
+    conversationHistory: conversationContext,
+    cartSummary: !isCartEmpty(session.cart) ? await formatCartDisplay(await getCartProducts(tenantIds, session.cart)) : undefined,
+    systemContext: "Customer is browsing or just starting. Greet them warmly and offer to help with shopping.",
+  });
+
   return {
-    reply: Messages.getGreetingMessage(userText),
+    reply,
     newStage: "discovering",
   };
 }
@@ -239,16 +500,27 @@ export async function handleConfirmingProductsStage(
   session: BotSession,
   userText: string
 ): Promise<StageResponse> {
+  const conversationContext = getRecentConversation(session.conversation_history);
+
   // FIRST: Check if message is off-topic (before any processing)
   if (isObviouslyOffTopic(userText)) {
     logger.info("Off-topic query in confirming_products stage (pattern match)");
+    
+    const productResults = session.pending_products ? formatPendingProducts(session.pending_products) : "";
+    const reply = await generateAIResponse({
+      stage: "confirming_products",
+      userMessage: userText,
+      conversationHistory: conversationContext,
+      productResults,
+      systemContext: "Customer asked off-topic question. Politely redirect them to select a product from the options.",
+    });
+
     return {
-      reply: "I can only help with product selection. Which product would you like from the options shown?",
+      reply,
       newStage: "confirming_products",
     };
   }
 
-  const conversationContext = getRecentConversation(session.conversation_history);
   const extracted: SalesIntent = await extractSalesIntent(userText, conversationContext, "confirming_products");
 
   // Check if it's a query and validate topic
@@ -259,8 +531,18 @@ export async function handleConfirmingProductsStage(
       logger.info("Off-topic query in confirming_products stage", { 
         confidence: topicValidation.confidence 
       });
+
+      const productResults = session.pending_products ? formatPendingProducts(session.pending_products) : "";
+      const reply = await generateAIResponse({
+        stage: "confirming_products",
+        userMessage: userText,
+        conversationHistory: conversationContext,
+        productResults,
+        systemContext: "Customer asked off-topic question. Politely say you can only answer product questions and redirect to selection.",
+      });
+
       return {
-        reply: "I can only answer product questions. Please select a product from the options, or tell me what you're looking for.",
+        reply,
         newStage: "confirming_products",
       };
     }
@@ -268,8 +550,15 @@ export async function handleConfirmingProductsStage(
 
   // Handle cancel
   if (extracted.intent === "cancel") {
+    const reply = await generateAIResponse({
+      stage: "discovering",
+      userMessage: userText,
+      conversationHistory: conversationContext,
+      systemContext: "Customer cancelled product selection. Product selection cleared. Ask what they'd like to do instead.",
+    });
+
     return {
-      reply: "Okay, I've cleared the product selection. What would you like to do instead?",
+      reply,
       newStage: "discovering",
       updatedPendingProducts: undefined,
     };
@@ -278,8 +567,15 @@ export async function handleConfirmingProductsStage(
   // Check if user is providing more specific info or selections
   if (!session.pending_products || session.pending_products.length === 0) {
     // No pending products, go back to discovering
+    const reply = await generateAIResponse({
+      stage: "discovering",
+      userMessage: userText,
+      conversationHistory: conversationContext,
+      systemContext: "No pending products found. Ask customer what products they'd like to order.",
+    });
+
     return {
-      reply: "Let's start over. What products would you like to order?",
+      reply,
       newStage: "discovering",
       updatedPendingProducts: undefined,
     };
@@ -305,8 +601,16 @@ export async function handleConfirmingProductsStage(
     const cartProducts = await getCartProducts(tenantIds, updatedCart);
     const cartDisplay = formatCartDisplay(cartProducts);
     
+    const reply = await generateAIResponse({
+      stage: "discovering",
+      userMessage: userText,
+      conversationHistory: conversationContext,
+      cartSummary: cartDisplay,
+      systemContext: "Products added to cart successfully! Ask if they want to add more items or checkout.",
+    });
+    
     return {
-      reply: `Perfect! I've added those to your cart.\n\n${cartDisplay}\n\nWould you like to add more items or proceed to checkout?`,
+      reply,
       newStage: "discovering",
       updatedCart,
       updatedPendingProducts: undefined,
@@ -326,8 +630,17 @@ export async function handleConfirmingProductsStage(
     }
 
     if (newSearches.length === 0) {
+      const productResults = formatPendingProducts(session.pending_products);
+      const reply = await generateAIResponse({
+        stage: "confirming_products",
+        userMessage: userText,
+        conversationHistory: conversationContext,
+        productResults,
+        systemContext: "No products found with the new search terms. Show the original product options again and ask them to choose.",
+      });
+
       return {
-        reply: `I still couldn't find products matching that. Here are the products I found earlier:\n\n${formatPendingProducts(session.pending_products)}\n\nWhich one would you like?`,
+        reply,
         newStage: "confirming_products",
       };
     }
@@ -351,8 +664,16 @@ export async function handleConfirmingProductsStage(
       const cartProducts = await getCartProducts(tenantIds, updatedCart);
       const cartDisplay = formatCartDisplay(cartProducts);
       
+      const reply = await generateAIResponse({
+        stage: "discovering",
+        userMessage: userText,
+        conversationHistory: conversationContext,
+        cartSummary: cartDisplay,
+        systemContext: "Products added to cart! Ask if they want anything else.",
+      });
+      
       return {
-        reply: `Great! Added to cart.\n\n${cartDisplay}\n\nAnything else?`,
+        reply,
         newStage: "discovering",
         updatedCart,
         updatedPendingProducts: undefined,
@@ -360,15 +681,22 @@ export async function handleConfirmingProductsStage(
     }
 
     // Still multiple matches
-    let reply = "I found these products:\n\n";
+    let productResults = "";
     newSearches.forEach((search) => {
-      reply += `For "${search.query}":\n`;
+      productResults += `For "${search.query}":\n`;
       search.results.forEach((product, idx) => {
-        reply += `  ${idx + 1}. ${product.name} - $${product.price.toFixed(2)}\n`;
+        productResults += `  ${idx + 1}. ${product.name} - $${product.price.toFixed(2)}\n`;
       });
-      reply += "\n";
+      productResults += "\n";
     });
-    reply += "Which specific product would you like? You can say the exact name.";
+    
+    const reply = await generateAIResponse({
+      stage: "confirming_products",
+      userMessage: userText,
+      conversationHistory: conversationContext,
+      productResults,
+      systemContext: "Still multiple products found. Show options and ask customer to specify which one they want by name.",
+    });
     
     return {
       reply,
@@ -378,8 +706,17 @@ export async function handleConfirmingProductsStage(
   }
 
   // Fallback
+  const productResults = formatPendingProducts(session.pending_products);
+  const reply = await generateAIResponse({
+    stage: "confirming_products",
+    userMessage: userText,
+    conversationHistory: conversationContext,
+    productResults,
+    systemContext: "Show the product options again and ask customer to tell you which one they want by name.",
+  });
+
   return {
-    reply: `Let me show you the products again:\n\n${formatPendingProducts(session.pending_products)}\n\nWhich would you like? Please tell me the product name.`,
+    reply,
     newStage: "confirming_products",
   };
 }
@@ -403,8 +740,15 @@ export async function handleConfirmingOrderStage(
       /^(yes|yeah|yep|sure|ok|okay|correct|confirm|that'?s? right|looks good|proceed)$/i.test(lowerText)) {
     
     if (isCartEmpty(session.cart)) {
+      const reply = await generateAIResponse({
+        stage: "discovering",
+        userMessage: userText,
+        conversationHistory: conversationContext,
+        systemContext: "Cart is empty but customer tried to confirm order. Let them know they need to add products first.",
+      });
+
       return {
-        reply: "Your cart is empty! Let's add some products first.",
+        reply,
         newStage: "discovering",
       };
     }
@@ -424,31 +768,46 @@ export async function handleConfirmingOrderStage(
           messengerSenderId: session.external_user_id, // Link order to Messenger sender
         });
 
+        const reply = await generateAIResponse({
+          stage: "discovering",
+          userMessage: userText,
+          conversationHistory: conversationContext,
+          systemContext: `Order #${result?.orderId} created successfully! Total: $${result?.total.toFixed(2)}, Items: ${result?.itemCount}. Thank customer ${session.contact.name} and let them know we'll contact them at ${session.contact.phone || session.contact.email}. Ask if they need anything else.`,
+        });
+
         return {
-          reply: Messages.getOrderSuccessMessage(
-            userText,
-            result?.orderId || '',
-            result?.total || 0,
-            result?.itemCount || 0,
-            session.contact.name!,
-            session.contact.phone || session.contact.email || ''
-          ),
+          reply,
           newStage: "discovering",
           updatedCart: clearCart(),
           updatedContact: {},
         };
       } catch (error: any) {
         logger.error("Order creation failed:", error);
+        
+        const reply = await generateAIResponse({
+          stage: "discovering",
+          userMessage: userText,
+          conversationHistory: conversationContext,
+          systemContext: `Error creating order: ${error.message}. Apologize and ask them to try again or contact support.`,
+        });
+
         return {
-          reply: `Sorry, there was an error creating your order: ${error.message}\n\nPlease try again or contact support.`,
+          reply,
           newStage: "discovering",
         };
       }
     }
 
     // Need contact info
+    const reply = await generateAIResponse({
+      stage: "collecting_contact",
+      userMessage: userText,
+      conversationHistory: conversationContext,
+      systemContext: "Customer confirmed order. Now need to collect contact information. Ask for their name first.",
+    });
+
     return {
-      reply: Messages.getAskContactMessage(userText),
+      reply,
       newStage: "collecting_contact",
     };
   }
@@ -456,8 +815,16 @@ export async function handleConfirmingOrderStage(
   // Handle cancellation
   if (extracted.intent === "cancel" || 
       /^(no|nope|cancel|stop|nevermind|never mind)$/i.test(lowerText)) {
+    
+    const reply = await generateAIResponse({
+      stage: "discovering",
+      userMessage: userText,
+      conversationHistory: conversationContext,
+      systemContext: "Customer cancelled the order. Cart has been cleared. Ask if you can help with something else.",
+    });
+
     return {
-      reply: Messages.getCancelMessage(userText),
+      reply,
       newStage: "discovering",
       updatedCart: clearCart(),
     };
@@ -468,8 +835,16 @@ export async function handleConfirmingOrderStage(
     const cartProducts = await getCartProducts(tenantIds, session.cart);
     const cartDisplay = formatCartDisplay(cartProducts);
     
+    const reply = await generateAIResponse({
+      stage: "discovering",
+      userMessage: userText,
+      conversationHistory: conversationContext,
+      cartSummary: cartDisplay,
+      systemContext: "Customer wants to modify their cart. Show current cart and explain they can add more items, remove items, or change quantities.",
+    });
+    
     return {
-      reply: Messages.getModifyCartMessage(userText, cartDisplay),
+      reply,
       newStage: "discovering",
     };
   }
@@ -480,8 +855,17 @@ export async function handleConfirmingOrderStage(
     if (isObviouslyOffTopic(userText)) {
       const cartProducts = await getCartProducts(tenantIds, session.cart);
       const cartDisplay = formatCartDisplay(cartProducts);
+      
+      const reply = await generateAIResponse({
+        stage: "confirming_order",
+        userMessage: userText,
+        conversationHistory: conversationContext,
+        cartSummary: cartDisplay,
+        systemContext: "Customer asked off-topic question. Politely redirect to order confirmation. Show cart and ask if they're ready to confirm (yes/no).",
+      });
+
       return {
-        reply: `I can only help with product and order questions.\n\nYour cart:\n${cartDisplay}\n\nReady to confirm? (yes/no)`,
+        reply,
         newStage: "confirming_order",
       };
     }
@@ -491,28 +875,54 @@ export async function handleConfirmingOrderStage(
     if (!topicValidation.isOnTopic && topicValidation.confidence > 0.6) {
       const cartProducts = await getCartProducts(tenantIds, session.cart);
       const cartDisplay = formatCartDisplay(cartProducts);
+      
+      const reply = await generateAIResponse({
+        stage: "confirming_order",
+        userMessage: userText,
+        conversationHistory: conversationContext,
+        cartSummary: cartDisplay,
+        systemContext: "Customer asked off-topic question. Say you can only answer product questions. Show cart and ask if ready to confirm.",
+      });
+
       return {
-        reply: `I can only answer product-related questions.\n\nYour cart:\n${cartDisplay}\n\nReady to confirm? (yes/no)`,
+        reply,
         newStage: "confirming_order",
       };
     }
 
+    // Answer the product question, then remind about order confirmation
     const ragReply = await runRagForUserTenants(tenantIds, userText);
     const cartProducts = await getCartProducts(tenantIds, session.cart);
     const cartDisplay = formatCartDisplay(cartProducts);
     
+    const reply = await generateAIResponse({
+      stage: "confirming_order",
+      userMessage: userText,
+      conversationHistory: conversationContext,
+      cartSummary: cartDisplay,
+      systemContext: `Answer from RAG: ${ragReply}. After providing this answer, show their cart and ask if they're ready to confirm their order (yes/no).`,
+    });
+    
     return {
-      reply: `${ragReply}\n\nYour cart:\n${cartDisplay}\n\nReady to confirm? (yes/no)`,
+      reply,
       newStage: "confirming_order",
     };
   }
 
-  // Fallback
+  // Fallback - show cart and ask for confirmation
   const cartProducts = await getCartProducts(tenantIds, session.cart);
   const cartDisplay = formatCartDisplay(cartProducts);
   
+  const reply = await generateAIResponse({
+    stage: "confirming_order",
+    userMessage: userText,
+    conversationHistory: conversationContext,
+    cartSummary: cartDisplay,
+    systemContext: "Show customer their order and ask them to confirm (yes to proceed, no to cancel).",
+  });
+  
   return {
-    reply: `Your order:\n\n${cartDisplay}\n\nIs this correct? Reply "yes" to proceed or "no" to cancel.`,
+    reply,
     newStage: "confirming_order",
   };
 }
@@ -526,6 +936,8 @@ export async function handleCollectingContactStage(
   session: BotSession,
   userText: string
 ): Promise<StageResponse> {
+  const conversationContext = getRecentConversation(session.conversation_history);
+
   // Check if we already have complete contact info (returning customer)
   const hasCompleteInfo = session.contact?.name && 
     (session.contact?.phone || session.contact?.email) &&
@@ -551,24 +963,31 @@ export async function handleCollectingContactStage(
         });
 
         const contactInfo = session.contact.phone || session.contact.email;
+        const reply = await generateAIResponse({
+          stage: "discovering",
+          userMessage: userText,
+          conversationHistory: conversationContext,
+          systemContext: `Order #${result?.orderId} created successfully! Total: $${result?.total.toFixed(2)}, ${result?.itemCount} items. Thank customer ${session.contact.name} and confirm we'll contact them at ${contactInfo}. Ask if they need anything else.`,
+        });
 
         return {
-          reply: Messages.getOrderSuccessMessage(
-            userText,
-            result?.orderId || '',
-            result?.total || 0,
-            result?.itemCount || 0,
-            session.contact.name!,
-            contactInfo!
-          ),
+          reply,
           newStage: "discovering",
           updatedCart: clearCart(),
           updatedContact: {},
         };
       } catch (error: any) {
         logger.error("Order creation failed:", error);
+        
+        const reply = await generateAIResponse({
+          stage: "discovering",
+          userMessage: userText,
+          conversationHistory: conversationContext,
+          systemContext: `Error creating order: ${error.message}. Apologize sincerely and ask them to try again or contact support.`,
+        });
+
         return {
-          reply: `Sorry, there was an error creating your order: ${error.message}\n\nPlease try again or contact support.`,
+          reply,
           newStage: "discovering",
           updatedCart: clearCart(),
           updatedContact: {},
@@ -578,8 +997,15 @@ export async function handleCollectingContactStage(
     
     if (/^(no|nope|nah|wrong|incorrect|change|update|ទេ)$/i.test(lowerText)) {
       // Customer wants to update their info
+      const reply = await generateAIResponse({
+        stage: "collecting_contact",
+        userMessage: userText,
+        conversationHistory: conversationContext,
+        systemContext: "Customer wants to update their contact information. Clear the old info and ask for their name again.",
+      });
+
       return {
-        reply: Messages.getUpdateContactMessage(userText),
+        reply,
         newStage: "collecting_contact",
         updatedContact: {}, // Clear existing contact
       };
@@ -587,12 +1013,16 @@ export async function handleCollectingContactStage(
     
     // Show confirmation prompt
     const contactInfo = session.contact.phone || session.contact.email;
+    const reply = await generateAIResponse({
+      stage: "collecting_contact",
+      userMessage: userText,
+      conversationHistory: conversationContext,
+      contactInfo: session.contact,
+      systemContext: `We have customer's info on file: ${session.contact.name}, ${contactInfo}, Address: ${session.contact.address}. Ask if this is still correct (yes/no).`,
+    });
+
     return {
-      reply: Messages.getConfirmContactMessage(
-        userText,
-        session.contact.name!,
-        `${contactInfo}\nAddress: ${session.contact.address}`
-      ),
+      reply,
       newStage: "collecting_contact",
     };
   }
@@ -600,13 +1030,21 @@ export async function handleCollectingContactStage(
   // FIRST: Check if message is off-topic (before any processing)
   if (isObviouslyOffTopic(userText)) {
     logger.info("Off-topic query in collecting_contact stage (pattern match)");
+    
+    const reply = await generateAIResponse({
+      stage: "collecting_contact",
+      userMessage: userText,
+      conversationHistory: conversationContext,
+      contactInfo: session.contact,
+      systemContext: "Customer asked off-topic question during checkout. Politely redirect them to complete their order. Ask for missing contact info.",
+    });
+
     return {
-      reply: "I can only help with your order right now. Please provide your contact information.\n\nWhat's your name?",
+      reply,
       newStage: "collecting_contact",
     };
   }
 
-  const conversationContext = getRecentConversation(session.conversation_history);
   const extracted: SalesIntent = await extractSalesIntent(userText, conversationContext, "collecting_contact");
 
   // Check if it's a query intent and validate topic
@@ -617,8 +1055,17 @@ export async function handleCollectingContactStage(
       logger.info("Off-topic query in collecting_contact stage", { 
         confidence: topicValidation.confidence 
       });
+
+      const reply = await generateAIResponse({
+        stage: "collecting_contact",
+        userMessage: userText,
+        conversationHistory: conversationContext,
+        contactInfo: session.contact,
+        systemContext: "Customer asked off-topic question. Say you can only help with product/order questions. Ask them to complete their order first by providing contact info.",
+      });
+
       return {
-        reply: "I can only help with product and order questions. Let's complete your order first.\n\nWhat's your name?",
+        reply,
         newStage: "collecting_contact",
       };
     }
@@ -626,8 +1073,15 @@ export async function handleCollectingContactStage(
 
   // Handle cancel
   if (extracted.intent === "cancel") {
+    const reply = await generateAIResponse({
+      stage: "discovering",
+      userMessage: userText,
+      conversationHistory: conversationContext,
+      systemContext: "Customer cancelled their order. Cart cleared. Ask if you can help with something else.",
+    });
+
     return {
-      reply: "Order cancelled. Your cart has been cleared. Can I help you with something else?",
+      reply,
       newStage: "discovering",
       updatedCart: clearCart(),
       updatedContact: {},
@@ -650,8 +1104,16 @@ export async function handleCollectingContactStage(
 
   // Ask for name if missing
   if (!hasName) {
+    const reply = await generateAIResponse({
+      stage: "collecting_contact",
+      userMessage: userText,
+      conversationHistory: conversationContext,
+      contactInfo: updatedContact,
+      systemContext: "Need customer's name to complete the order. Ask for their name politely.",
+    });
+
     return {
-      reply: Messages.getAskNameMessage(userText),
+      reply,
       newStage: "collecting_contact",
       updatedContact,
     };
@@ -659,8 +1121,16 @@ export async function handleCollectingContactStage(
 
   // Ask for phone if missing
   if (!hasValidPhone && !hasValidEmail) {
+    const reply = await generateAIResponse({
+      stage: "collecting_contact",
+      userMessage: userText,
+      conversationHistory: conversationContext,
+      contactInfo: updatedContact,
+      systemContext: `Thank customer ${updatedContact.name} for providing their name. Now ask for their phone number or email so we can contact them about their order.`,
+    });
+
     return {
-      reply: Messages.getAskPhoneMessage(userText, updatedContact.name!),
+      reply,
       newStage: "collecting_contact",
       updatedContact,
     };
@@ -668,8 +1138,16 @@ export async function handleCollectingContactStage(
 
   // Ask for address if missing
   if (!hasAddress) {
+    const reply = await generateAIResponse({
+      stage: "collecting_contact",
+      userMessage: userText,
+      conversationHistory: conversationContext,
+      contactInfo: updatedContact,
+      systemContext: `Great! We have ${updatedContact.name}'s contact. Now ask where we should deliver the order. Request their full delivery address.`,
+    });
+
     return {
-      reply: Messages.getAskAddressMessage(userText, updatedContact.name!),
+      reply,
       newStage: "collecting_contact",
       updatedContact,
     };
@@ -689,17 +1167,31 @@ export async function handleCollectingContactStage(
     });
 
     const contactInfo = hasValidPhone ? updatedContact.phone : updatedContact.email;
+    const reply = await generateAIResponse({
+      stage: "discovering",
+      userMessage: userText,
+      conversationHistory: conversationContext,
+      systemContext: `Perfect! Order #${result?.orderId} created successfully! Total: $${result?.total.toFixed(2)}, ${result?.itemCount} items. Thank ${updatedContact.name} enthusiastically and confirm we'll contact them at ${contactInfo}. Ask if they need anything else.`,
+    });
 
     return {
-      reply: `🎉 Perfect! Order #${result?.orderId} created successfully!\n\nTotal: $${result?.total.toFixed(2)}\nItems: ${result?.itemCount}\n\nThank you ${updatedContact.name}! We'll reach out to you at ${contactInfo}.\n\nAnything else I can help with?`,
+      reply,
       newStage: "discovering",
       updatedCart: clearCart(),
       updatedContact: {},
     };
   } catch (error: any) {
     logger.error("Order creation failed:", error);
+    
+    const reply = await generateAIResponse({
+      stage: "discovering",
+      userMessage: userText,
+      conversationHistory: conversationContext,
+      systemContext: `Error creating order: ${error.message}. Apologize sincerely and ask them to try again or contact support.`,
+    });
+
     return {
-      reply: `Sorry, there was an error creating your order: ${error.message}\n\nPlease try again or contact support.`,
+      reply,
       newStage: "discovering",
       updatedCart: clearCart(),
       updatedContact: {},
@@ -710,6 +1202,177 @@ export async function handleCollectingContactStage(
 // ============================================
 // HELPER FUNCTIONS
 // ============================================
+
+/**
+ * Detect what cart modification the user wants to make
+ */
+function detectCartModification(
+  userText: string,
+  cart: CartItem[]
+): { 
+  action: "remove" | "change_quantity" | "clear_all" | "unknown";
+  productId?: string;
+  newQuantity?: number;
+} {
+  const lowerText = userText.toLowerCase().trim();
+
+  // Check for clear all cart
+  if (
+    /clear (my |the )?cart/i.test(lowerText) ||
+    /empty (my |the )?cart/i.test(lowerText) ||
+    /remove (all|everything)/i.test(lowerText) ||
+    /delete (all|everything)/i.test(lowerText) ||
+    /លុបទាំងអស់/i.test(userText) // Khmer: delete all
+  ) {
+    return { action: "clear_all" };
+  }
+
+  // Check for quantity change patterns
+  const qtyMatch = lowerText.match(/change (to |quantity to )?(\d+)|make it (\d+)|update (to |quantity to )?(\d+)/i);
+  if (qtyMatch) {
+    const newQty = parseInt(qtyMatch[2] || qtyMatch[3] || qtyMatch[5]);
+    // Try to find which product (usually the last one added or mentioned)
+    const productId = cart.length > 0 ? cart[cart.length - 1].product_id : undefined;
+    return { action: "change_quantity", productId, newQuantity: newQty };
+  }
+
+  // Check for removal patterns
+  const isRemoval = 
+    /remove|delete|take out|get rid of/i.test(lowerText) ||
+    /ដក|លុប/i.test(userText); // Khmer: remove/delete
+
+  if (isRemoval) {
+    // Try to find which product to remove
+    
+    // Pattern 1: "remove that item" or "remove it" or "delete that" - referring to most recent/context
+    if (
+      /remove (that|the|this) (item|one|product)/i.test(lowerText) ||
+      /delete (that|the|this|it)/i.test(lowerText) ||
+      /remove it/i.test(lowerText) ||
+      /take (it|that) out/i.test(lowerText)
+    ) {
+      // Remove the last item in cart (most likely what they're referring to)
+      const productId = cart.length > 0 ? cart[cart.length - 1].product_id : undefined;
+      return { action: "remove", productId };
+    }
+
+    // Pattern 2: Try to match product name in the message
+    for (const item of cart) {
+      if (lowerText.includes(item.name.toLowerCase())) {
+        return { action: "remove", productId: item.product_id };
+      }
+    }
+
+    // Pattern 3: If only one item in cart, remove it
+    if (cart.length === 1) {
+      return { action: "remove", productId: cart[0].product_id };
+    }
+
+    // If multiple items and unclear which one, return unknown
+    return { action: "unknown" };
+  }
+
+  return { action: "unknown" };
+}
+
+/**
+ * Detect if user wants to browse/see products (not a specific item search)
+ */
+function isAskingToBrowseProducts(message: string): boolean {
+  const lowerMessage = message.toLowerCase().trim();
+  
+  // English browsing patterns
+  const englishPatterns = [
+    /what (do you|products|items) (have|got|sell)/i,
+    /show me (your )?(products|items|catalog|inventory)/i,
+    /what (products|items) (are|do you have) (available|in stock)/i,
+    /can i see (your )?(products|items|catalog)/i,
+    /browse (your )?(products|items|catalog)/i,
+    /what('?s| is) (available|for sale)/i,
+    /what can i (buy|order|get|purchase)/i,
+    /(looking|searching) for (a |some )?(shirt|shoes|product|item)/i,
+    /want to buy (a |some )?(shirt|shoes|product|item)/i,
+    /need (a |some )?(shirt|shoes|product|item)/i,
+  ];
+  
+  // Khmer browsing patterns
+  const khmerPatterns = [
+    /មានផលិតផលអ្វីខ្លះ/,  // What products do you have
+    /មានអីលក់/,  // What do you sell
+    /មានអីខ្លះ/,  // What do you have
+    /បង្ហាញផលិតផល/,  // Show products
+    /ចង់មើលផលិតផល/,  // Want to see products
+    /ចង់ទិញ.*?(អាវ|ស្បែកជើង)/,  // Want to buy (shirt|shoes)
+  ];
+  
+  const allPatterns = [...englishPatterns, ...khmerPatterns];
+  return allPatterns.some(pattern => pattern.test(lowerMessage) || pattern.test(message));
+}
+
+/**
+ * Extract product type/category from browsing query
+ */
+function extractProductTypeFromQuery(message: string): string {
+  const lowerMessage = message.toLowerCase();
+  
+  // Common product types
+  const productTypes: Record<string, string[]> = {
+    'shirt': ['shirt', 'tshirt', 't-shirt', 'jersey', 'top', 'blouse', 'អាវ'],
+    'shoes': ['shoe', 'shoes', 'sneaker', 'boot', 'sandal', 'footwear', 'ស្បែកជើង'],
+    'pants': ['pant', 'pants', 'jeans', 'trousers', 'ខោ'],
+    'dress': ['dress', 'gown', 'សម្លៀកបំពាក់'],
+    'jacket': ['jacket', 'coat', 'hoodie', 'អាវក្រៅ'],
+    'accessories': ['accessory', 'accessories', 'bag', 'hat', 'watch', 'belt'],
+  };
+  
+  // Check for product type mentions
+  for (const [type, keywords] of Object.entries(productTypes)) {
+    if (keywords.some(keyword => lowerMessage.includes(keyword))) {
+      return type;
+    }
+  }
+  
+  // Default: return empty to search all products
+  return '';
+}
+
+/**
+ * Detect if user is asking specifically about their cart
+ * Supports multiple languages (English, Khmer)
+ */
+function isAskingAboutCart(message: string): boolean {
+  const lowerMessage = message.toLowerCase().trim();
+  
+  // English cart query patterns
+  const englishPatterns = [
+    /what('?s| is| do i have)? (in|is in)? (my |the )?cart/i,
+    /show (me )?(my |the )?cart/i,
+    /check (my |the )?cart/i,
+    /view (my |the )?cart/i,
+    /see (my |the )?cart/i,
+    /what (did i|have i) (add|order|put)/i,
+    /cart (contents|items|status)/i,
+    /in my (cart|basket|order)/i,
+    /how (much|many) (is |are )?in (my |the )?cart/i,
+    /what'?s? (my |the )?total/i,
+    /how much (do i owe|is my (order|total))/i,
+    /my (current )?order/i,
+  ];
+  
+  // Khmer cart query patterns
+  const khmerPatterns = [
+    /កន្ត្រក/,  // cart/basket
+    /អ្វី.*?ក្នុង.*?កន្ត្រក/,  // what in cart
+    /មាន.*?ក្នុង.*?កន្ត្រក/,  // have in cart
+    /បញ្ជី.*?បញ្ជាទិញ/,  // order list
+    /សរុប.*?ប៉ុន្មាន/,  // total how much
+    /តម្លៃ.*?សរុប/,  // total price
+  ];
+  
+  const allPatterns = [...englishPatterns, ...khmerPatterns];
+  
+  return allPatterns.some(pattern => pattern.test(lowerMessage) || pattern.test(message));
+}
 
 function extractProductIdsFromSelection(
   userText: string,

@@ -59,14 +59,9 @@ export async function POST(req: NextRequest) {
           setTimeout(() => processedMessages.delete(dedupeKey), MESSAGE_EXPIRY);
           
           // Process message
-          logger.info(`[INFO] Processing message: ${text}`);
+          logger.info(`[INFO] Recieved message: ${text}`);
           const result = await handleMessengerText(pageId, senderId, text);
-          logger.info(`[INFO] Result: ${result}`);
-          if (result.ok) {
-            logger.info(`[INFO] Message processed successfully`);
-          } else {
-            logger.error(`[ERROR] Failed to process message: ${result.reason}`);
-          }
+          logger.info(`[INFO] Message processed: ${result}`);
         }
       }
     } catch (e: any) {
