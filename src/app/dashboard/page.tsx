@@ -6,7 +6,7 @@ import StatCard from "@/components/dashboard/stat-card";
 import TopItem from "@/components/dashboard/top-item";
 import { GaugePlaceholder } from "@/components/dashboard/placeholders";
 import SalesKPI from "@/components/dashboard/SalesKPI";
-import { currency } from "@/data/mock";
+import { Currency } from "@/types";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export default async function Page() {
@@ -79,7 +79,7 @@ export default async function Page() {
         >
           <div className="space-y-3">
             {top.map((t: any, i: number) => (
-              <TopItem key={t.id} avatar={<FaBoxOpen size={20} />} title={t.name} subtitle={`${t.total_qty} sold`} amount={currency(Number(t.total_amount))} />
+              <TopItem key={t.id} avatar={<FaBoxOpen size={20} />} title={t.name} subtitle={`${t.total_qty} sold`} amount={Currency(Number(t.total_amount))} />
             ))}
             {top.length === 0 ? (
               <div className="text-sm text-gray-600">No sales yet</div>

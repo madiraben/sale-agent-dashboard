@@ -3,10 +3,33 @@
 import React from "react";
 import Button from "@/components/ui/button";
 
+const plans = [
+  {
+    title: "Monthly",
+    priceLabel: "$20",
+    subLabel: "/month",
+    plan: "monthly",
+  },
+  
+  {
+    title: "3 Months",
+    priceLabel: "$35",
+    subLabel: "/3 months",
+    plan: "quarterly",
+  },
+  
+  { 
+    title: "Yearly",
+    priceLabel: "$180",
+    subLabel: "/year",
+    plan: "yearly",
+  },
+];
+
 export default function PublicBillingPage() {
   return (
     <div className="min-h-dvh bg-[#EEF2F7] p-6 md:p-10">
-      <div className="mx-auto max-w-4xl">
+      <div className="mx-auto max-w-4xl mt-[100px]">
         <div className="mb-6 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5">
           <h1 className="text-2xl font-semibold text-gray-900">Pro Plan</h1>
           <p className="mt-2 text-sm text-gray-600">Unlock full access to inventory, orders, AI knowledge base, analytics and more.</p>
@@ -20,24 +43,9 @@ export default function PublicBillingPage() {
             <Feature>Priority support</Feature>
           </div>
           <div className="mt-6 grid gap-3 md:grid-cols-3">
-            <PlanCard
-              title="Monthly"
-              priceLabel="$20"
-              subLabel="/month"
-              plan="monthly"
-            />
-            <PlanCard
-              title="3 Months"
-              priceLabel="$35"
-              subLabel="/3 months"
-              plan="quarterly"
-            />
-            <PlanCard
-              title="Yearly"
-              priceLabel="$180"
-              subLabel="/year"
-              plan="yearly"
-            />
+            {plans.map((plan) => (
+              <PlanCard key={plan.plan} {...plan} />
+            ))}
           </div>
         </div>
 

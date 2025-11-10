@@ -8,6 +8,7 @@ import PasswordField from "@/components/ui/password-field";
 import ImageUploader from "@/components/ui/image-uploader";
 import LanguageSwitcher from "@/components/language-switcher";
 import Button from "@/components/ui/button";
+import Link from "next/link";
 
 export default function Setting() {
   const [name, setName] = React.useState("");
@@ -18,9 +19,12 @@ export default function Setting() {
   const [password, setPassword] = React.useState("");
   const [newPassword, setNewPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
+  const [fbConnected, setFbConnected] = React.useState<{ id: string | null; name: string | null } | null>(null);
+  const [fbPages, setFbPages] = React.useState<Array<{ id: string; name: string }>>([]);
+  const [fbLoading, setFbLoading] = React.useState(false);
 
   function handleSaveProfile() {
-    // TODO: integrate with API
+      // TODO: integrate with API
     console.log({ name, email, bio, avatar });
   }
 
@@ -36,6 +40,50 @@ export default function Setting() {
     setPassword("");
     setNewPassword("");
     setConfirmPassword("");
+  }
+
+  React.useEffect(() => {
+    async function loadFb() {
+      try {
+        setFbLoading(true);
+        const [cRes, pRes] = await Promise.all([
+          fetch("/api/facebook/connected").then((r) => r.json()),
+          fetch("/api/facebook/pages").then((r) => r.json()),
+        ]);
+        setFbConnected(cRes);
+        const pages = Array.isArray(pRes?.pages) ? pRes.pages.map((p: any) => ({ id: p.id, name: p.name })) : [];
+        setFbPages(pages);
+      } catch {
+        // swallow
+      } finally {
+        setFbLoading(false);
+      }
+    }
+    loadFb();
+  }, []);
+
+  async function connectPage(pageId: string) {
+    if (!pageId) return;
+    setFbLoading(true);
+    try {
+      const r = await fetch("/api/facebook/pages", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ page_id: pageId }) });
+      if (r.ok) {
+        const j = await r.json();
+        setFbConnected({ id: j?.page?.id ?? pageId, name: j?.page?.name ?? null });
+      }
+    } finally {
+      setFbLoading(false);
+    }
+  }
+
+  async function disconnectPage() {
+    setFbLoading(true);
+    try {
+      await fetch("/api/facebook/connected", { method: "DELETE" });
+      setFbConnected({ id: null, name: null });
+    } finally {
+      setFbLoading(false);
+    }
   }
 
   return (
@@ -83,6 +131,38 @@ export default function Setting() {
           </div>
         </Card>
       </div>
+
+      <Card>
+        <div className="mb-4 text-base font-semibold text-gray-900">Facebook</div>
+        {fbConnected?.id ? (
+          <div className="flex items-center justify-between gap-4">
+            <div className="text-sm text-gray-700">Connected Page: <span className="font-medium text-gray-900">{fbConnected.name || fbConnected.id}</span></div>
+            <Button variant="outline" onClick={disconnectPage} disabled={fbLoading}>Disconnect</Button>
+          </div>
+        ) : (
+          <>
+            <div className="mb-3 flex items-center justify-between gap-4">
+              <div className="text-sm text-gray-600">Connect your Facebook Page to enable the Messenger bot.</div>
+              <Link href="/api/facebook/oauth/start" className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-white hover:bg-blue-700">
+                Connect Facebook Page
+              </Link>
+            </div>
+            {fbPages.length > 0 ? (
+              <div className="rounded-md border">
+                <div className="border-b bg-gray-50 px-3 py-2 text-sm font-medium text-gray-700">Your Pages</div>
+                <ul className="divide-y">
+                  {fbPages.map((p) => (
+                    <li key={p.id} className="flex items-center justify-between px-3 py-2 text-sm">
+                      <div className="text-gray-800">{p.name}</div>
+                      <Button onClick={() => connectPage(p.id)} disabled={fbLoading}>Connect</Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </>
+        )}
+      </Card>
 
       <Card>
         <div className="mb-4 text-base font-semibold text-gray-900">Security</div>

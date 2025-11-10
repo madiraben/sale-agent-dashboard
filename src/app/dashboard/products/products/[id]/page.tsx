@@ -9,10 +9,9 @@ import TextArea from "@/components/ui/text-area";
 import ImageUploader from "@/components/ui/image-uploader";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { currency } from "@/data/mock";
-
-type Category = { id: string; name: string };
-
+import { Category, Currency } from "@/types"; 
+import { toast } from "react-toastify";
+import LoadingScreen from "@/components/loading-screen";
 export default function Detail() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -25,6 +24,7 @@ export default function Detail() {
 
   const [name, setName] = React.useState("");
   const [sku, setSku] = React.useState("");
+  const [size, setSize] = React.useState("");
   const [price, setPrice] = React.useState<number>(0);
   const [stock, setStock] = React.useState<number>(0);
   const [categoryId, setCategoryId] = React.useState<string | null>(null);
@@ -34,13 +34,13 @@ export default function Detail() {
   const [categories, setCategories] = React.useState<Category[]>([]);
 
   React.useEffect(() => {
-    if (!id) return;
+    if (!id) return setLoading(false);
     async function load() {
       setLoading(true);
       const [{ data: p }, { data: cats }] = await Promise.all([
         supabase
           .from("products")
-          .select("id,name,sku,price,stock,category_id,description,image_url")
+          .select("id,name,sku,size,price,stock,category_id,description,image_url")
           .eq("id", id)
           .single(),
         supabase.from("product_categories").select("id,name").order("name", { ascending: true }),
@@ -48,6 +48,7 @@ export default function Detail() {
       if (p) {
         setName((p as any).name ?? "");
         setSku((p as any).sku ?? "");
+        setSize((p as any).size ?? "");
         setPrice(Number((p as any).price ?? 0));
         setStock(Number((p as any).stock ?? 0));
         setCategoryId((p as any).category_id ?? null);
@@ -77,6 +78,7 @@ export default function Detail() {
         .update({
           name: name.trim(),
           sku: sku.trim(),
+          size: size.trim(),
           price,
           stock,
           category_id: categoryId,
@@ -97,8 +99,13 @@ export default function Detail() {
     setDeleting(true);
     try {
       const { error } = await supabase.from("products").delete().eq("id", id);
-      if (error) throw error;
-      router.push("/dashboard/products/products");
+      if (error) {
+        toast.error(error.message as string || "Delete failed");
+        return;
+      } else {
+        toast.success("Product deleted successfully");  
+        router.push("/dashboard/products/products");
+      }
     } finally {
       setDeleting(false);
       setConfirmDelete(false);
@@ -106,13 +113,8 @@ export default function Detail() {
   }
 
   if (loading) {
-    return (
-      <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5">
-        <div className="text-gray-700">Loading...</div>
-      </div>
-    );
+    return <LoadingScreen />;
   }
-
   return (
     <>
     <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5">
@@ -150,6 +152,7 @@ export default function Detail() {
               <TextField label="Product Name" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
             </div>
             <TextField label="SKU" placeholder="SKU" value={sku} onChange={(e) => setSku(e.target.value)} />
+            <TextField label="Size" placeholder="Size" value={size} onChange={(e) => setSize(e.target.value)} />
             <TextField label="Price" type="number" value={String(price)} onChange={(e) => setPrice(Number(e.target.value))} />
             <TextField label="Stock" type="number" value={String(stock)} onChange={(e) => setStock(Number(e.target.value))} />
             <div>
@@ -168,7 +171,7 @@ export default function Detail() {
 
           <div className="mt-6 grid grid-cols-2 gap-4 rounded-lg border p-4 text-sm">
             <div className="text-gray-600">Preview</div>
-            <div className="text-right font-semibold text-gray-900">{currency(price)}</div>
+            <div className="text-right font-semibold text-gray-900">{Currency(price)}</div>
             <div className="text-gray-600">In stock</div>
             <div className="text-right text-gray-900">{stock}</div>
           </div>

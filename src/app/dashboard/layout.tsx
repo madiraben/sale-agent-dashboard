@@ -1,5 +1,5 @@
 import Sidebar, { type SidebarItem } from "@/components/sidebar";
-import Topbar from "@/components/topbar";
+import TopbarClient from "@/components/topbar-client";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import React from "react";
@@ -9,10 +9,9 @@ import {
   MdShoppingCart, 
   MdInventory, 
   MdPeople,
-  MdBook    , 
   MdAssessment, 
   MdSettings, 
-  MdPerson 
+  MdPerson,
 } from "react-icons/md";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -21,7 +20,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     data: { session },
   } = await supabase.auth.getSession();
   if (!session) {
-    redirect("/login");
+    redirect("/auth/login");
   }
   // Query current tenant status (any membership row).
   const { data: tenant } = await supabase
@@ -37,7 +36,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
       { href: "/dashboard/products/products", label: "Products" },
       { href: "/dashboard/products/categories", label: "Product Categories" },
     ] },
-    {  href: "/dashboard/add-ai-knowleadge", label: "AI Knowledge", icon: <MdBook /> },
     {  href: "/dashboard/customers", label: "Customers", icon: <MdPeople /> },
     {  href: "/dashboard/play-ground", label: "Playground", icon: <MdAssessment/> },
     {  href: "/dashboard/profile", label: "Profile", icon: <MdPerson /> },
@@ -48,7 +46,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     <div className="flex min-h-dvh">
       <Sidebar items={items} />
       <div className="flex min-h-dvh flex-1 flex-col bg-[#EEF2F7]">
-        <Topbar title="SYSTEM MANAGER" />
+        <TopbarClient title="SYSTEM MANAGER" />
         <main className="flex-1 p-4 md:p-6">
           <BillingBanner isActive={isActive} />
           {children}

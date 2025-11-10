@@ -1,45 +1,83 @@
 "use client"
-import { notFound, useParams } from "next/navigation";
-import { currency } from "@/data/mock";
+import { useParams, usePathname } from "next/navigation";
+import { Customer, Order, Currency } from "@/types";
 import Button from "@/components/ui/button";
-import { useRouter } from "next/navigation";
-import React from "react";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import Modal from "@/components/ui/modal";
+import LoadingScreen from "@/components/loading-screen";
+import { useRouter } from "next/navigation";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export default function CustomerHistory() {
   const router = useRouter();
-  const supabase = React.useMemo(() => createSupabaseBrowserClient(), []);
-  const [customer, setCustomer] = React.useState<any | null | undefined>(undefined);
-  const [history, setHistory] = React.useState<Array<{ id: string; date: string; total: number; status: string }>>([]);
-  const [selectedOrder, setSelectedOrder] = React.useState<{ id: string; date: string; total: number; status: string } | null>(null);
-  const [orderItems, setOrderItems] = React.useState<Array<{ name: string; qty: number; price: number }>>([]);
-  const [itemsLoading, setItemsLoading] = React.useState(false);
-  const { id } = useParams<{ id: string }>();
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const { id: paramId } = useParams<{ id?: string }>();
+  const pathname = usePathname();
+  const id = useMemo(() => {
+    if (typeof paramId === "string" && paramId.length > 0) return paramId;
+    // Fallback: extract last segment from pathname /dashboard/customers/[id]
+    if (typeof pathname === "string") {
+      const seg = pathname.split("/").filter(Boolean).pop();
+      return seg ?? "";
+    }
+    return "";
+  }, [paramId, pathname]);
 
-  React.useEffect(() => {
-    async function load() {
-      if (!id) return;
-      const { data: c } = await supabase.from("customers").select("id,name,phone,email,address").eq("id", id).single();
-      if (!c) return setCustomer(null);
-      setCustomer(c);
-      const { data: orders } = await supabase
+  const [customer, setCustomer] = useState<Customer | null | undefined>(undefined);
+  const [history, setHistory] = useState<Order[]>([]);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  type DisplayOrderItem = { name: string; qty: number; price: number };
+  const [orderItems, setOrderItems] = useState<DisplayOrderItem[]>([]);
+  const [itemsLoading, setItemsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    return () => { isMounted.current = false; };
+  }, []);
+
+  const loadCustomerAndOrders = useCallback(async () => {
+    if (!id || typeof id !== "string") return;
+    setError(null);
+    try {
+      const { data: c, error: cErr } = await supabase
+        .from("customers")
+        .select("id,name,phone,email,address")
+        .eq("id", id)
+        .single();
+      if (cErr) throw cErr;
+      if (!c) { if (isMounted.current) setCustomer(null); return; }
+      if (isMounted.current) setCustomer(c as Customer);
+
+      const { data: orders, error: oErr } = await supabase
         .from("orders")
         .select("id,date,total,status")
         .eq("customer_id", id)
         .order("date", { ascending: false });
-      setHistory((orders as any) ?? []);
+      if (oErr) throw oErr;
+      if (isMounted.current) setHistory((orders as any) ?? []);
+    } catch (e: any) {
+      console.error("Failed to load customer/history", e?.message || e);
+      if (isMounted.current) { setError(e?.message ?? "Failed to load"); setCustomer(null); }
     }
-    load();
-  }, [id]);
-  if (customer === undefined) {
+  }, [id, supabase]);
+
+  useEffect(() => { loadCustomerAndOrders(); }, [loadCustomerAndOrders]);
+
+  if (customer === undefined) return <LoadingScreen />;
+  if (customer === null) {
     return (
-      <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5">
-        <div className="text-gray-700">Loading...</div>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Customer not found</h2>
+            <p className="text-sm text-gray-600">The requested customer does not exist or was removed.</p>
+          </div>
+          <Button variant="outline" onClick={() => router.push("/dashboard/customers")}>Back to customers</Button>
+        </div>
       </div>
     );
   }
-  if (customer === null) return notFound();
 
   return (
     <div className="space-y-6">
@@ -78,18 +116,25 @@ export default function CustomerHistory() {
                   onClick={async () => {
                     setSelectedOrder(o);
                     setItemsLoading(true);
-                    const { data } = await supabase
-                      .from("order_items")
-                      .select("qty, price, products(name)")
-                      .eq("order_id", o.id);
-                    const mapped = ((data as any) ?? []).map((it: any) => ({ name: it.products?.name ?? "Unknown", qty: it.qty, price: it.price }));
-                    setOrderItems(mapped);
-                    setItemsLoading(false);
+                    try {
+                      const { data, error: iErr } = await supabase
+                        .from("order_items")
+                        .select("qty, price, products(name)")
+                        .eq("order_id", o.id);
+                      if (iErr) throw iErr;
+                      const mapped = ((data as any) ?? []).map((it: any) => ({ name: it.products?.name ?? "Unknown", qty: it.qty, price: it.price }));
+                      setOrderItems(mapped);
+                    } catch (e: any) {
+                      console.error("Failed to load order items", e?.message || e);
+                      setOrderItems([]);
+                    } finally {
+                      setItemsLoading(false);
+                    }
                   }}
                 >
                   <td className="px-3 py-2 font-medium text-gray-900">{o.id}</td>
                   <td className="px-3 py-2">{o.date}</td>
-                  <td className="px-3 py-2">{currency(o.total)}</td>
+                  <td className="px-3 py-2">{Currency(o.total as number)}</td>
                   <td className="px-3 py-2 capitalize">{o.status}</td>
                 </tr>
               ))}
@@ -119,7 +164,7 @@ export default function CustomerHistory() {
               </div>
               <div className="text-right">
                 <div className="text-gray-500">Total</div>
-                <div className="text-base font-semibold text-gray-900">{currency(selectedOrder.total)}</div>
+                <div className="text-base font-semibold text-gray-900">{Currency(selectedOrder.total)}</div>
               </div>
             </div>
             <div className="rounded-lg border">
@@ -140,8 +185,8 @@ export default function CustomerHistory() {
                       <tr key={i} className="border-t">
                         <td className="px-3 py-2">{it.name}</td>
                         <td className="px-3 py-2">{it.qty}</td>
-                        <td className="px-3 py-2">{currency(it.price)}</td>
-                        <td className="px-3 py-2">{currency(it.price * it.qty)}</td>
+                        <td className="px-3 py-2">{Currency(it.price)}</td>
+                        <td className="px-3 py-2">{Currency(it.price * it.qty)}</td>
                       </tr>
                     ))
                   )}

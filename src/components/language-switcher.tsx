@@ -2,8 +2,8 @@
 
 import Image from "next/image";
 import React, { useState } from "react";
+import { Language } from "@/types";
 
-type Language = "EN" | "KM";
 
 type LanguageSwitcherProps = {
   value?: Language;

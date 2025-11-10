@@ -2,7 +2,6 @@
 
 import React from "react";
 import LanguageSwitcher from "@/components/language-switcher";
-import { FaUser, FaBell } from "react-icons/fa";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 
@@ -11,7 +10,7 @@ type TopbarProps = {
 };
 
 export default function Topbar({ title }: TopbarProps) {
-  const supabase = createSupabaseBrowserClient();
+  const supabase = React.useMemo(() => createSupabaseBrowserClient(), []);
   const router = useRouter();
 
   const handleSignOut = async () => {
@@ -25,7 +24,10 @@ export default function Topbar({ title }: TopbarProps) {
       </div>
       <div className="flex items-center gap-4 md:gap-6">
         <IconButton aria-label="Notifications">
-          <FaBell size={24} />
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
+            <path d="M13.73 21a2 2 0 01-3.46 0" />
+          </svg>
         </IconButton>
         <div className="scale-110">
           <LanguageSwitcher />
@@ -39,7 +41,10 @@ export default function Topbar({ title }: TopbarProps) {
           </svg>
         </IconButton>
         <span className="ml-2">
-          <FaUser size={26} />
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
+          </svg>
         </span>
       </div>
     </header>

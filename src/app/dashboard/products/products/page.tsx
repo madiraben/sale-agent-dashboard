@@ -3,7 +3,8 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
-import { currency, type Product as MockProduct } from "@/data/mock";
+import type { Product, MultimodalEmbeddingResponse } from "@/types";
+import { Currency } from "@/types";
 import SearchInput from "@/components/ui/search-input";
 import Button from "@/components/ui/button";
 import SideDrawer from "@/components/ui/side-drawer";
@@ -11,7 +12,7 @@ import TextField from "@/components/ui/text-field";
 import TextArea from "@/components/ui/text-area";
 import ImageUploader from "@/components/ui/image-uploader";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-
+import { toast } from "react-toastify";
 export default function Product() {
   const supabase = React.useMemo(() => createSupabaseBrowserClient(), []);
   const router = useRouter();
@@ -24,17 +25,18 @@ export default function Product() {
     };
   }, []);
   const [openAdd, setOpenAdd] = React.useState(false);
-  const [openEdit, setOpenEdit] = React.useState<null | string>(null);
-  const [rows, setRows] = React.useState<Array<MockProduct & { image_url?: string; category_id?: string }>>([]);
+  // Removed unused inline edit drawer state; edits navigate to detail page
+  const [rows, setRows] = React.useState<Array<Product & { image_url?: string; category_id?: string }>>([]);
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
   const [deleting, setDeleting] = React.useState(false);
 
   async function loadProducts() {
     const { data, error } = await supabase
       .from("products")
-      .select("id,name,sku,price,stock,category_id,product_categories(name),image_url,description")
+      .select("id,name,sku,size,price,stock,category_id,product_categories(name),image_url,description")
       .order("name", { ascending: true });
     if (!error && data) setRows((data as any));
+    if (error) toast.error(error.message as string || "Failed to load products");
   }
 
   React.useEffect(() => {
@@ -45,7 +47,7 @@ export default function Product() {
     const s = q.trim().toLowerCase();
     if (!s) return rows;
     return rows.filter((p) =>
-      [p.name, p.sku, (p as any).product_categories?.name].some((v) => (v ?? "").toLowerCase().includes(s))
+      [p.name, p.sku, (p as any).size, (p as any).product_categories?.name].some((v) => (v ?? "").toLowerCase().includes(s))
     );
   }, [q, rows]);
 
@@ -78,6 +80,7 @@ export default function Product() {
               <th className="px-4 py-3 w-14">No.</th>
               <th className="px-4 py-3">Product</th>
               <th className="px-4 py-3">SKU</th>
+              <th className="px-4 py-3">Size</th>
               <th className="px-4 py-3">Category</th>
               <th className="px-4 py-3">Price</th>
               <th className="px-4 py-3">Stock</th>
@@ -106,8 +109,9 @@ export default function Product() {
                   </div>
                 </td>
                 <td className="px-4 py-3">{p.sku}</td>
+                <td className="px-4 py-3">{(p as any).size ?? "-"}</td>
                 <td className="px-4 py-3">{(p as any).product_categories?.name ?? "-"}</td>
-                <td className="px-4 py-3">{currency(p.price)}</td>
+                <td className="px-4 py-3">{Currency(p.price)}</td>
                 <td className="px-4 py-3">{p.stock}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-2">
@@ -141,9 +145,7 @@ export default function Product() {
       {openAdd ? (
         <ProductDrawer mode="add" onClose={() => { setOpenAdd(false); loadProducts(); }} />
       ) : null}
-      {openEdit ? (
-        <ProductDrawer mode="edit" productId={openEdit} onClose={() => { setOpenEdit(null); loadProducts(); }} />
-      ) : null}
+      {/* Inline edit drawer removed; edit navigates to detail page */}
       <ConfirmDialog
         open={deleteId !== null}
         title="Delete Product"
@@ -153,12 +155,16 @@ export default function Product() {
         busy={deleting}
         onCancel={() => setDeleteId(null)}
         onConfirm={async () => {
-          if (!deleteId) return;
+          if (!deleteId) { setDeleting(false); setDeleteId(null); return; }
           setDeleting(true);
           const { error } = await supabase.from("products").delete().eq("id", deleteId);
           setDeleting(false);
           setDeleteId(null);
-          if (!error) loadProducts();
+          if (error) toast.error(error.message as string || "Failed to delete product");
+          else {
+            toast.success("Product deleted successfully");
+            loadProducts();
+          }
         }}
       />
     </div>
@@ -173,12 +179,12 @@ type DrawerProps = {
 
 function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
   const supabase = React.useMemo(() => createSupabaseBrowserClient(), []);
-  const [editing, setEditing] = React.useState<null | (MockProduct & { image_url?: string })>(null);
+  const [editing, setEditing] = React.useState<null | (Product & { image_url?: string })>(null);
   React.useEffect(() => {
     if (mode === "edit" && productId) {
       supabase
         .from("products")
-        .select("id,name,sku,price,stock,category,image_url,description")
+        .select("id,name,sku,size,price,stock,category_id,image_url,description")
         .eq("id", productId)
         .single()
         .then(({ data }) => setEditing(data as any));
@@ -187,6 +193,7 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
 
   const [name, setName] = React.useState(editing?.name ?? "");
   const [sku, setSku] = React.useState(editing?.sku ?? "");
+  const [size, setSize] = React.useState(editing?.size ?? "");
   const [categoryId, setCategoryId] = React.useState<string>("");
   const [categories, setCategories] = React.useState<Array<{ id: string; name: string }>>([]);
   const [price, setPrice] = React.useState<string>(editing ? String(editing.price) : "");
@@ -195,11 +202,13 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
   const [imageFile, setImageFile] = React.useState<File | null>(null);
   const [imageWidth, setImageWidth] = React.useState<string>("");
   const [imageHeight, setImageHeight] = React.useState<string>("");
+  const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
     if (!editing) return;
     setName(editing.name ?? "");
     setSku(editing.sku ?? "");
+    setSize((editing as any).size ?? "");
     setCategoryId((editing as any).category_id ?? "");
     setPrice(String(editing.price ?? ""));
     setStock(String(editing.stock ?? ""));
@@ -222,12 +231,28 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
     return urlData?.publicUrl;
   }
 
+  function composeEmbeddingText(): string {
+    const categoryName = categories.find((c) => c.id === categoryId)?.name ?? categoryId ?? "";
+    const priceNumber = Number(price || 0);
+    const parts = [
+      name,
+      sku ? `SKU: ${sku}` : null,
+      size ? `Size: ${size}` : null,
+      categoryName ? `Category: ${categoryName}` : null,
+      `Price: ${Currency(priceNumber)}`,
+      (description ?? "").trim() ? (description ?? "").trim() : null,
+    ].filter(Boolean) as string[];
+    return parts.join("\n");
+  }
+
   async function onSave() {
     if (!name || !sku) return onClose();
+    setSaving(true);
     if (mode === "add") {
+      // 1) Insert base fields
       const { data: inserted, error } = await supabase
         .from("products")
-        .insert({ name, sku, category_id: categoryId || null, price: Number(price || 0), stock: Number(stock || 0), description })
+        .insert({ name, sku, size, category_id: categoryId || null, price: Number(price || 0), stock: Number(stock || 0), description })
         .select("id")
         .single();
       if (!error && inserted) {
@@ -235,7 +260,39 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
         if (publicUrl) {
           await supabase.from("products").update({ image_url: publicUrl }).eq("id", inserted.id);
         }
+
+        // 2) Build embedding payload and call API
+        try {
+          let imageBase64: string | undefined;
+          if (imageFile) {
+            imageBase64 = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => {
+                const result = reader.result as string;
+                const base64 = result.split(",")[1] || "";
+                resolve(base64);
+              };
+              reader.onerror = () => reject(new Error("Failed to convert image to base64"));
+              reader.readAsDataURL(imageFile);
+            });
+          }
+
+          const res = await fetch("/api/embeddings/multimodal", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              text: composeEmbeddingText(),
+              ...(imageBase64 ? { imageBase64 } : {}),
+            }),
+          });
+          const data = (await res.json()) as MultimodalEmbeddingResponse;
+          if (res.ok && (data.embedding || data.textEmbedding || data.imageEmbedding)) {
+            const combined = data.embedding ?? data.textEmbedding ?? data.imageEmbedding;
+            await supabase.from("products").update({ embedding: combined }).eq("id", inserted.id);
+          }
+        } catch {}
       }
+      setSaving(false);
       onClose();
       return;
     }
@@ -243,11 +300,40 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
       const publicUrl = await uploadImageIfNeeded(editing.id);
       await supabase
         .from("products")
-        .update({ name, sku, category_id: categoryId || null, price: Number(price || 0), stock: Number(stock || 0), description, image_url: publicUrl ?? editing.image_url })
+        .update({ name, sku, size, category_id: categoryId || null, price: Number(price || 0), stock: Number(stock || 0), description, image_url: publicUrl ?? editing.image_url })
         .eq("id", editing.id);
+
+      // regenerate embedding if text (name, sku, size, category, price, description) or image changed
+      const changedText =
+        (editing.description ?? "") !== (description ?? "") ||
+        (editing.name ?? "") !== (name ?? "") ||
+        (editing.sku ?? "") !== (sku ?? "") ||
+        (editing as any).size !== (size ?? "") ||
+        ((editing as any).category_id ?? "") !== (categoryId ?? "") ||
+        Number((editing as any).price ?? 0) !== Number(price || 0);
+      const changedImage = (publicUrl ?? editing.image_url) !== editing.image_url;
+      if (changedText || changedImage) {
+        try {
+          const res = await fetch("/api/embeddings/multimodal", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              text: composeEmbeddingText(),
+              ...((publicUrl ?? editing.image_url) ? { imageUrl: (publicUrl ?? editing.image_url)! } : {}),
+            }),
+          });
+          const data = (await res.json()) as MultimodalEmbeddingResponse;
+          if (res.ok && (data.embedding || data.textEmbedding || data.imageEmbedding)) {
+            const combined = data.embedding ?? data.textEmbedding ?? data.imageEmbedding;
+            await supabase.from("products").update({ embedding: combined }).eq("id", editing.id);
+          }
+        } catch {}
+      }
+      setSaving(false);
       onClose();
       return;
     }
+    setSaving(false);
     onClose();
   }
 
@@ -258,8 +344,8 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
       title={mode === "add" ? "Add Product" : "Edit Product"}
       footer={(
         <div className="flex items-center justify-end gap-3">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={onSave}>Save</Button>
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button onClick={onSave} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
         </div>
       )}
     >
@@ -274,6 +360,7 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
         <TextField label="Name" placeholder="Product name" value={name} onChange={(e) => setName(e.target.value)} />
         <div className="grid grid-cols-2 gap-4">
           <TextField label="SKU" placeholder="SKU" value={sku} onChange={(e) => setSku(e.target.value)} />
+          <TextField label="Size" placeholder="Size" value={size} onChange={(e) => setSize(e.target.value)} />
           <div>
             <div className="mb-1 text-sm text-gray-700">Category</div>
             <select
