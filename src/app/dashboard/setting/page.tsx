@@ -22,6 +22,8 @@ export default function Setting() {
   const [fbConnected, setFbConnected] = React.useState<{ id: string | null; name: string | null } | null>(null);
   const [fbPages, setFbPages] = React.useState<Array<{ id: string; name: string }>>([]);
   const [fbLoading, setFbLoading] = React.useState(false);
+  const [clearingMemory, setClearingMemory] = React.useState(false);
+  const [memoryMessage, setMemoryMessage] = React.useState<string | null>(null);
 
   function handleSaveProfile() {
       // TODO: integrate with API
@@ -83,6 +85,32 @@ export default function Setting() {
       setFbConnected({ id: null, name: null });
     } finally {
       setFbLoading(false);
+    }
+  }
+
+  async function handleClearBotMemory() {
+    if (!confirm("Are you sure you want to clear all bot chat memory? This will delete all conversation history and customer sessions. This action cannot be undone.")) {
+      return;
+    }
+
+    setClearingMemory(true);
+    setMemoryMessage(null);
+    
+    try {
+      const response = await fetch("/api/bot/clear-memory", { method: "DELETE" });
+      const data = await response.json();
+      
+      if (response.ok) {
+        setMemoryMessage(`✅ Success! Cleared ${data.sessionsDeleted || 0} sessions and ${data.messagesDeleted || 0} messages.`);
+      } else {
+        setMemoryMessage(`❌ Error: ${data.error || "Failed to clear bot memory"}`);
+      }
+    } catch (error: any) {
+      setMemoryMessage(`❌ Error: ${error.message || "Failed to clear bot memory"}`);
+    } finally {
+      setClearingMemory(false);
+      // Clear message after 5 seconds
+      setTimeout(() => setMemoryMessage(null), 5000);
     }
   }
 
@@ -173,6 +201,48 @@ export default function Setting() {
         </div>
         <div className="mt-4 flex justify-end">
           <Button variant="outline" onClick={handleChangePassword}>Change password</Button>
+        </div>
+      </Card>
+
+      <Card>
+        <div className="mb-4 text-base font-semibold text-gray-900">Bot Settings</div>
+        <div className="space-y-4">
+          <div>
+            <div className="mb-2 text-sm font-medium text-gray-700">Clear Bot Memory</div>
+            <div className="mb-3 text-sm text-gray-600">
+              Delete all conversation history and customer sessions from the bot. This will make the bot forget all previous conversations and start fresh with all customers.
+            </div>
+            <div className="flex items-center gap-3">
+              <Button 
+                variant="outline" 
+                onClick={handleClearBotMemory} 
+                disabled={clearingMemory}
+                className="border-red-200 text-red-600 hover:bg-red-50"
+              >
+                {clearingMemory ? (
+                  <>
+                    <svg className="mr-2 h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <circle cx="12" cy="12" r="10" strokeWidth="3" strokeDasharray="32" className="opacity-25" />
+                      <path d="M12 2a10 10 0 0 1 10 10" strokeWidth="3" strokeLinecap="round" className="opacity-75" />
+                    </svg>
+                    Clearing...
+                  </>
+                ) : (
+                  <>
+                    <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                    </svg>
+                    Clear All Bot Memory
+                  </>
+                )}
+              </Button>
+              {memoryMessage && (
+                <div className={`text-sm ${memoryMessage.startsWith('✅') ? 'text-green-600' : 'text-red-600'}`}>
+                  {memoryMessage}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </Card>
     </div>

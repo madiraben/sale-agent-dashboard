@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { appConfig } from "@/lib/config";
 import { verifyFacebookSignature } from "@/lib/security/http";
 import { handleMessengerText } from "@/lib/chat/orchestrator";
+import logger from "@/lib/logger";
 
 // GET: Webhook verification handshake
 export async function GET(req: NextRequest) {
@@ -22,6 +23,7 @@ const MESSAGE_EXPIRY = 60000; // 1 minute
 // POST: Messenger webhook
 export async function POST(req: NextRequest) {
   const raw = await req.text();
+  logger.info(`[INFO] Received webhook: ${raw}`);
   if (!verifyFacebookSignature(req, raw)) {
     return NextResponse.json({ error: "invalid_signature" }, { status: 403 });
   }
@@ -48,7 +50,7 @@ export async function POST(req: NextRequest) {
           // Prevent duplicate processing using message ID
           const dedupeKey = messageId || `${pageId}:${senderId}:${text}:${evt?.timestamp}`;
           if (processedMessages.has(dedupeKey)) {
-            console.log(`[INFO] Skipping duplicate message: ${dedupeKey}`);
+            logger.info(`[INFO] Skipping duplicate message: ${dedupeKey}`);
             continue;
           }
           
@@ -57,11 +59,18 @@ export async function POST(req: NextRequest) {
           setTimeout(() => processedMessages.delete(dedupeKey), MESSAGE_EXPIRY);
           
           // Process message
-          await handleMessengerText(pageId, senderId, text);
+          logger.info(`[INFO] Processing message: ${text}`);
+          const result = await handleMessengerText(pageId, senderId, text);
+          logger.info(`[INFO] Result: ${result}`);
+          if (result.ok) {
+            logger.info(`[INFO] Message processed successfully`);
+          } else {
+            logger.error(`[ERROR] Failed to process message: ${result.reason}`);
+          }
         }
       }
     } catch (e: any) {
-      console.error("[ERROR] Failed to process webhook:", e?.message || e);
+      logger.error("[ERROR] Failed to process webhook:", e?.message || e);
     }
   })();
   

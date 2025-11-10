@@ -15,8 +15,10 @@ export async function validateProductTopic(userMessage: string): Promise<TopicVa
   try {
     const systemPrompt = `You are a topic classifier for an e-commerce sales bot.
 Your job is to determine if a customer's message is related to shopping, products, or making a purchase.
+The customer can write in ANY language (English, Khmer, etc.).
 
 ON-TOPIC examples (return true):
+English:
 - "What products do you have?"
 - "How much is this item?"
 - "I want to buy a phone"
@@ -25,7 +27,16 @@ ON-TOPIC examples (return true):
 - "Can I see laptops?"
 - "I need help choosing a product"
 
+Khmer (ភាសាខ្មែរ):
+- "មានផលិតផលអ្វីខ្លះ?"
+- "តម្លៃប៉ុន្មាន?"
+- "ចង់ទិញទូរស័ព្ទ"
+- "មានស្បែកជើងអត់?"
+- "អាចមើលកុំព្យូទ័របានទេ?"
+- "ខ្ញុំចង់បញ្ជាទិញ"
+
 OFF-TOPIC examples (return false):
+English:
 - "What's the weather today?"
 - "Tell me a joke"
 - "Who won the election?"
@@ -34,6 +45,11 @@ OFF-TOPIC examples (return false):
 - "Write me a poem"
 - "Help me with my homework"
 - "What's your opinion on politics?"
+
+Khmer (ភាសាខ្មែរ):
+- "អាកាសធាតុថ្ងៃនេះយ៉ាងម៉េច?"
+- "និយាយរឿងកំប្លែង"
+- "រដ្ឋធានីបារាំងឈ្មោះអី?"
 
 Respond with ONLY this JSON format:
 {
@@ -91,9 +107,29 @@ Respond with ONLY this JSON format:
 }
 
 /**
- * Get a polite response for off-topic queries
+ * Detect if message contains Khmer script
  */
-export function getOffTopicResponse(confidence: number): string {
+function hasKhmerScript(text: string): boolean {
+  // Khmer Unicode range: U+1780 to U+17FF
+  return /[\u1780-\u17FF]/.test(text);
+}
+
+/**
+ * Get a polite response for off-topic queries
+ * Returns response in the same language as the query
+ */
+export function getOffTopicResponse(confidence: number, originalMessage?: string): string {
+  const isKhmer = originalMessage && hasKhmerScript(originalMessage);
+  
+  if (isKhmer) {
+    // Khmer responses
+    if (confidence > 0.8) {
+      return "ខ្ញុំជាជំនួយការទិញទំនិញ ផ្តោតលើការជួយអ្នកស្វែងរក និងទិញផលិតផល។ ខ្ញុំមិនអាចជួយសំណួរនេះបានទេ ប៉ុន្តែខ្ញុំរីករាយក្នុងការ:\n\n• បង្ហាញផលិតផលរបស់យើង\n• ជួយអ្នកធ្វើការបញ្ជាទិញ\n• ឆ្លើយសំណួរអំពីផលិតផល\n• ជួយអ្នកក្នុងការទិញទំនិញ\n\nតើអ្នកចាប់អារម្មណ៍ផលិតផលអ្វី?";
+    }
+    return "ខ្ញុំនៅទីនេះដើម្បីជួយអ្នកទិញទំនិញ! ខ្ញុំអាចជួយ:\n\n• ស្វែងរកផលិតផល\n• ឆ្លើយសំណួរអំពីផលិតផល\n• ធ្វើការបញ្ជាទិញ\n• ពិនិត្យភាពអាចរកបាន\n\nតើខ្ញុំអាចជួយអ្នករកអ្វីថ្ងៃនេះ?";
+  }
+  
+  // English responses
   if (confidence > 0.8) {
     return "I'm a shopping assistant focused on helping you find and purchase products. I can't help with that question, but I'd be happy to:\n\n• Show you our products\n• Help you place an order\n• Answer questions about items in our catalog\n• Assist with your shopping needs\n\nWhat products are you interested in?";
   }

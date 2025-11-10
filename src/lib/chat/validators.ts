@@ -1,5 +1,42 @@
-import { completeWithContext } from "@/lib/rag/llm";
-import type { CustomerInfo, OrderProduct } from "./order-processor";
+import { appConfig } from "@/lib/config";
+
+// Simple LLM completion without RAG context
+async function complete(systemPrompt: string, userPrompt: string): Promise<string> {
+  const resp = await fetch(appConfig.openai.baseUrl + "/chat/completions", {
+    method: "POST",
+    headers: { 
+      "Content-Type": "application/json", 
+      Authorization: `Bearer ${appConfig.openai.apiKey}` 
+    },
+    body: JSON.stringify({
+      model: appConfig.openai.model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.1,
+      max_tokens: 500,
+    }),
+  });
+  
+  const j = await resp.json().catch(() => null);
+  return j?.choices?.[0]?.message?.content || "{}";
+}
+
+// Type definitions
+export interface CustomerInfo {
+  name?: string;
+  phone?: string;
+  address?: string;
+  email?: string;
+}
+
+export interface OrderProduct {
+  product_id: string;
+  name: string;
+  price: number;
+  qty: number;
+}
 
 export interface ValidationResult {
   isValid: boolean;
@@ -64,7 +101,7 @@ IMPORTANT RULES:
 JSON:`;
 
   try {
-    const response = await completeWithContext(
+    const response = await complete(
       "You are a data validation expert. Return only valid JSON.",
       prompt
     );
@@ -161,7 +198,7 @@ Rules:
 JSON:`;
 
   try {
-    const response = await completeWithContext(
+    const response = await complete(
       "You are an order validation expert. Return only valid JSON.",
       prompt
     );

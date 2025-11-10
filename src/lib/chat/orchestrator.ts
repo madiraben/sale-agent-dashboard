@@ -34,13 +34,14 @@ export async function handleMessengerText(pageId: string, senderId: string, text
       sender: "user",
       message: text,
     });
-
+    logger.info(`[INFO] Loading or creating session for Messenger user: ${senderId}`);
     // Load or create session
     let session: BotSession = await getSession(page.user_id, "messenger", senderId);
-    
+    logger.info(`[INFO] Session loaded: ${session}`);
     // Check for returning customer and pre-populate contact info
     if (!session.contact?.name) {
       const existingCustomer = await getCustomerByMessengerId(tenantIds, senderId);
+      logger.info(`[INFO] Existing customer found: ${existingCustomer}`);
       if (existingCustomer) {
         session.contact = {
           name: existingCustomer.name,
@@ -50,7 +51,7 @@ export async function handleMessengerText(pageId: string, senderId: string, text
         logger.info(`Found returning customer: ${existingCustomer.name}`, { customerId: existingCustomer.id });
       }
     }
-    
+    logger.info(`[INFO] Session stage: ${session.stage}`);
     logger.info(`Messenger session stage: ${session.stage}`, { 
       cartItems: session.cart?.length || 0,
       hasContact: !!session.contact?.name,

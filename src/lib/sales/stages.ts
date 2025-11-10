@@ -18,6 +18,7 @@ import {
   Product 
 } from "./product-search";
 import { validateProductTopic, getOffTopicResponse, isObviouslyOffTopic } from "./topic-validator";
+import * as Messages from "./messages";
 import logger from "../logger";
 
 export type StageResponse = {
@@ -58,7 +59,7 @@ export async function handleDiscoveringStage(
     if (isObviouslyOffTopic(userText)) {
       logger.info("Obviously off-topic query detected (pattern match)");
       return {
-        reply: getOffTopicResponse(1.0),
+        reply: getOffTopicResponse(1.0, userText),
         newStage: "discovering",
       };
     }
@@ -72,7 +73,7 @@ export async function handleDiscoveringStage(
         reason: topicValidation.reason 
       });
       return {
-        reply: getOffTopicResponse(topicValidation.confidence),
+        reply: getOffTopicResponse(topicValidation.confidence, userText),
         newStage: "discovering",
       };
     }
@@ -98,10 +99,42 @@ export async function handleDiscoveringStage(
   if (extracted.intent === "order" || extracted.intent === "add_to_cart") {
     // Check if we have specific items mentioned
     if (!extracted.items || extracted.items.length === 0) {
-      return {
-        reply: "I'd be happy to help you order! What products would you like? You can tell me the product names and quantities.",
-        newStage: "discovering",
-      };
+      // Fallback: Check if user is confirming a previous recommendation
+      const lowerText = userText.toLowerCase().trim();
+      const isConfirming = /^(yes|yeah|yep|sure|ok|okay|okie|i('ll| will)? take (it|one|that)|add (it|that|one))$/i.test(lowerText);
+      
+      if (isConfirming && session.conversation_history && session.conversation_history.length > 0) {
+        // Try to extract product names from last bot message
+        const lastBotMessage = [...session.conversation_history]
+          .reverse()
+          .find(msg => msg.role === "assistant");
+          
+        if (lastBotMessage) {
+          // Look for product names in the message (format: "ProductName" or **ProductName**)
+          const productNameMatch = lastBotMessage.content.match(/(?:recommend|available|have|suggest)\s+(?:the\s+)?([A-Z][a-zA-Z\s]+?)(?:\s+for|\s+at|\s+,|\s+which|\s+\$)/i);
+          
+          if (productNameMatch) {
+            const productName = productNameMatch[1].trim();
+            logger.info(`Fallback: Extracted product from last bot message: ${productName}`);
+            
+            // Search for this product
+            const results = await searchProducts(tenantIds, productName);
+            
+            if (results.length > 0) {
+              extracted.items = [{ name: productName, qty: 1 }];
+              // Continue to normal flow below
+            }
+          }
+        }
+      }
+      
+      // If still no items, ask for clarification
+      if (!extracted.items || extracted.items.length === 0) {
+        return {
+          reply: "I'd be happy to help you order! What products would you like? You can tell me the product names and quantities.",
+          newStage: "discovering",
+        };
+      }
     }
 
     // Search for products
@@ -116,7 +149,7 @@ export async function handleDiscoveringStage(
 
     if (productSearches.length === 0) {
       return {
-        reply: `I couldn't find any products matching "${extracted.items.map(i => i.name).join('", "')}". Could you try describing them differently? Or ask me "what products do you have?"`,
+        reply: Messages.getProductNotFoundMessage(userText, extracted.items.map(i => i.name)),
         newStage: "discovering",
       };
     }
@@ -143,12 +176,12 @@ export async function handleDiscoveringStage(
       const cartProducts = await getCartProducts(tenantIds, updatedCart);
       const cartDisplay = formatCartDisplay(cartProducts);
       
-      return {
-        reply: `Great! I've added those items to your cart.\n\n${cartDisplay}\n\nWould you like to:\n• Add more items\n• Proceed to checkout (say "checkout")\n• Modify your cart`,
-        newStage: "discovering",
-        updatedCart,
-        updatedPendingProducts: undefined,
-      };
+        return {
+          reply: Messages.getCartAddedMessage(userText, cartDisplay),
+          newStage: "discovering",
+          updatedCart,
+          updatedPendingProducts: undefined,
+        };
     }
 
     // Multiple matches - need user to select
@@ -175,7 +208,7 @@ export async function handleDiscoveringStage(
   if (extracted.intent === "confirm_order") {
     if (isCartEmpty(session.cart)) {
       return {
-        reply: "Your cart is empty! What would you like to order?",
+        reply: Messages.getEmptyCartMessage(userText),
         newStage: "discovering",
       };
     }
@@ -185,16 +218,14 @@ export async function handleDiscoveringStage(
     const cartDisplay = formatCartDisplay(cartProducts);
     
     return {
-      reply: `Perfect! Let me confirm your order:\n\n${cartDisplay}\n\nIs this correct? Reply "yes" to confirm or "no" to modify.`,
+      reply: Messages.getCartConfirmMessage(userText, cartDisplay),
       newStage: "confirming_order",
     };
   }
 
   // Default fallback
-  const greeting = "Hello! I'm here to help you shop. You can:\n• Ask about our products\n• Place an order\n• Get product recommendations\n\nWhat would you like to do?";
-  
   return {
-    reply: greeting,
+    reply: Messages.getGreetingMessage(userText),
     newStage: "discovering",
   };
 }
@@ -394,7 +425,14 @@ export async function handleConfirmingOrderStage(
         });
 
         return {
-          reply: `🎉 Order confirmed! Order #${result?.orderId}\n\nTotal: $${result?.total.toFixed(2)}\nItems: ${result?.itemCount}\n\nThank you ${session.contact.name}! We'll contact you soon at ${session.contact.phone || session.contact.email}.\n\nNeed anything else?`,
+          reply: Messages.getOrderSuccessMessage(
+            userText,
+            result?.orderId || '',
+            result?.total || 0,
+            result?.itemCount || 0,
+            session.contact.name!,
+            session.contact.phone || session.contact.email || ''
+          ),
           newStage: "discovering",
           updatedCart: clearCart(),
           updatedContact: {},
@@ -410,7 +448,7 @@ export async function handleConfirmingOrderStage(
 
     // Need contact info
     return {
-      reply: "Great! To complete your order, I'll need your contact information.\n\nWhat's your name?",
+      reply: Messages.getAskContactMessage(userText),
       newStage: "collecting_contact",
     };
   }
@@ -419,7 +457,7 @@ export async function handleConfirmingOrderStage(
   if (extracted.intent === "cancel" || 
       /^(no|nope|cancel|stop|nevermind|never mind)$/i.test(lowerText)) {
     return {
-      reply: "No problem! Your cart has been cleared. Would you like to start a new order?",
+      reply: Messages.getCancelMessage(userText),
       newStage: "discovering",
       updatedCart: clearCart(),
     };
@@ -431,7 +469,7 @@ export async function handleConfirmingOrderStage(
     const cartDisplay = formatCartDisplay(cartProducts);
     
     return {
-      reply: `Current cart:\n\n${cartDisplay}\n\nWhat would you like to change? You can:\n• Add more products\n• Remove items\n• Change quantities`,
+      reply: Messages.getModifyCartMessage(userText, cartDisplay),
       newStage: "discovering",
     };
   }
@@ -490,13 +528,14 @@ export async function handleCollectingContactStage(
 ): Promise<StageResponse> {
   // Check if we already have complete contact info (returning customer)
   const hasCompleteInfo = session.contact?.name && 
-    (session.contact?.phone || session.contact?.email);
+    (session.contact?.phone || session.contact?.email) &&
+    session.contact?.address;
   
   if (hasCompleteInfo) {
     // Ask for confirmation of existing info
     const lowerText = userText.toLowerCase().trim();
     
-    if (/^(yes|yeah|yep|sure|ok|okay|correct|confirm|that'?s? right|looks good)$/i.test(lowerText)) {
+    if (/^(yes|yeah|yep|sure|ok|okay|correct|confirm|that'?s? right|looks good|បាទ|ចាស)$/i.test(lowerText)) {
       // Customer confirmed their info, create order
       try {
         const result = await createPendingOrder({
@@ -505,6 +544,7 @@ export async function handleCollectingContactStage(
             name: session.contact.name!,
             email: session.contact.email || null,
             phone: session.contact.phone || null,
+            address: session.contact.address || null,
           },
           cart: session.cart,
           messengerSenderId: session.external_user_id,
@@ -513,7 +553,14 @@ export async function handleCollectingContactStage(
         const contactInfo = session.contact.phone || session.contact.email;
 
         return {
-          reply: `🎉 Perfect! Order #${result?.orderId} created successfully!\n\nTotal: $${result?.total.toFixed(2)}\nItems: ${result?.itemCount}\n\nThank you ${session.contact.name}! We'll reach out to you at ${contactInfo}.\n\nAnything else I can help with?`,
+          reply: Messages.getOrderSuccessMessage(
+            userText,
+            result?.orderId || '',
+            result?.total || 0,
+            result?.itemCount || 0,
+            session.contact.name!,
+            contactInfo!
+          ),
           newStage: "discovering",
           updatedCart: clearCart(),
           updatedContact: {},
@@ -529,10 +576,10 @@ export async function handleCollectingContactStage(
       }
     }
     
-    if (/^(no|nope|nah|wrong|incorrect|change|update)$/i.test(lowerText)) {
+    if (/^(no|nope|nah|wrong|incorrect|change|update|ទេ)$/i.test(lowerText)) {
       // Customer wants to update their info
       return {
-        reply: "No problem! Let's update your information.\n\nWhat's your name?",
+        reply: Messages.getUpdateContactMessage(userText),
         newStage: "collecting_contact",
         updatedContact: {}, // Clear existing contact
       };
@@ -541,7 +588,11 @@ export async function handleCollectingContactStage(
     // Show confirmation prompt
     const contactInfo = session.contact.phone || session.contact.email;
     return {
-      reply: `I have your info on file:\n\nName: ${session.contact.name}\nContact: ${contactInfo}\n\nIs this still correct? (yes/no)`,
+      reply: Messages.getConfirmContactMessage(
+        userText,
+        session.contact.name!,
+        `${contactInfo}\nAddress: ${session.contact.address}`
+      ),
       newStage: "collecting_contact",
     };
   }
@@ -588,26 +639,37 @@ export async function handleCollectingContactStage(
     name: extracted.contact?.name || session.contact?.name,
     email: extracted.contact?.email || session.contact?.email,
     phone: extracted.contact?.phone || session.contact?.phone,
+    address: extracted.contact?.address || session.contact?.address,
   };
 
   // Validate what we have
   const hasName = updatedContact.name && updatedContact.name.trim().length > 2;
   const hasValidPhone = updatedContact.phone && isValidPhone(updatedContact.phone);
   const hasValidEmail = updatedContact.email && isValidEmail(updatedContact.email);
+  const hasAddress = updatedContact.address && updatedContact.address.trim().length > 3;
 
   // Ask for name if missing
   if (!hasName) {
     return {
-      reply: "What's your name?",
+      reply: Messages.getAskNameMessage(userText),
       newStage: "collecting_contact",
       updatedContact,
     };
   }
 
-  // Ask for phone or email if both missing
+  // Ask for phone if missing
   if (!hasValidPhone && !hasValidEmail) {
     return {
-      reply: `Thanks ${updatedContact.name}! What's the best way to reach you? Please provide your phone number or email address.`,
+      reply: Messages.getAskPhoneMessage(userText, updatedContact.name!),
+      newStage: "collecting_contact",
+      updatedContact,
+    };
+  }
+
+  // Ask for address if missing
+  if (!hasAddress) {
+    return {
+      reply: Messages.getAskAddressMessage(userText, updatedContact.name!),
       newStage: "collecting_contact",
       updatedContact,
     };

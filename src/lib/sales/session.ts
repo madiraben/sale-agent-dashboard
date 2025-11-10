@@ -20,7 +20,7 @@ export type BotSession = {
   stage: "discovering" | "confirming_products" | "confirming_order" | "collecting_contact";
   cart: CartItem[];
   pending_products?: Array<{ query: string; results: any[] }>; // Products awaiting user selection
-  contact: { name?: string; email?: string; phone?: string };
+  contact: { name?: string; email?: string; phone?: string; address?: string };
   conversation_history?: ConversationMessage[];
   metadata?: {
     last_intent?: string;

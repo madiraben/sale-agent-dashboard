@@ -2,19 +2,6 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { getTextEmbedding } from "@/lib/embeddings";
 import logger from "../logger";
 
-/**
- * HYBRID SMART CONTEXT SYSTEM
- * 
- * This module implements an intelligent context retrieval system that:
- * 1. Extracts customer facts (purchases, preferences) - ALWAYS relevant
- * 2. Includes recent context (last closed section) - Temporal relevance
- * 3. Uses semantic search ONLY when customer references history - Efficient
- * 
- * Benefits:
- * - Saves tokens: Only includes what's needed
- * - Smarter responses: Structured facts vs raw history
- * - Scalable: Won't break with long conversation histories
- */
 
 export interface SmartContext {
   formattedContext: string;  // Ready-to-use context for LLM
@@ -148,11 +135,7 @@ async function extractCustomerFacts(
   };
 }
 
-/**
- * Step 2: Get the most recent closed section
- * This provides immediate context from the last conversation
- * IMPORTANT: We summarize/truncate to avoid dumping huge conversation logs
- */
+
 async function getLastClosedSection(
   supabase: SupabaseClient,
   conversationId: string

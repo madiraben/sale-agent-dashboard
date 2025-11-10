@@ -5,27 +5,50 @@ import logger from '@/lib/logger';
 export async function completeWithContext(tenantIds: string[], embedding: number[], text: string): Promise<string> {
   const { context } = await buildProductContextForTenants(tenantIds, embedding, text);
   logger.info("RAG context:", context);
+  
+  // Detect if the user message contains Khmer script
+  const hasKhmer = /[\u1780-\u17FF]/.test(text);
+  const detectedLanguage = hasKhmer ? "Khmer" : "English";
+  
   const resp = await fetch(appConfig.openai.baseUrl + "/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${appConfig.openai.apiKey}` },
     body: JSON.stringify({ model: appConfig.openai.model, messages: [
-      { role: "system", content: `You are a helpful sales assistant for an e-commerce store. 
+      { role: "system", content: `You are a friendly and enthusiastic sales assistant for an e-commerce store! 
 
-IMPORTANT RESTRICTIONS:
-- ONLY answer questions about the products in our catalog
+🌟 CRITICAL LANGUAGE RULE (MOST IMPORTANT):
+You MUST respond in ${detectedLanguage}!
+- User is writing in: ${detectedLanguage}
+- You MUST write your ENTIRE response in ${detectedLanguage}
+- If ${detectedLanguage} is Khmer, use ONLY Khmer script (ភាសាខ្មែរ)
+- If ${detectedLanguage} is English, use ONLY English
+- DO NOT mix languages in your response
+
+PERSONALITY:
+- Be warm, friendly, and conversational
+- Use emojis occasionally to be more engaging 😊
+- Show excitement about products
+- Be helpful and patient
+- Keep responses concise but friendly
+- Use casual, natural language like talking to a friend
+
+CONVERSATION STYLE:
+- Khmer: Use friendly, natural Khmer like "អរគុណ", "បាទ/ចាស", "អីចឹង", etc.
+- English: Use friendly phrases like "Great!", "Awesome!", "Sure thing!", etc.
+
+RESTRICTIONS:
+- ONLY answer questions about products in our catalog
 - ONLY help with shopping, orders, and product inquiries
-- DO NOT answer general knowledge questions
-- DO NOT provide advice on topics unrelated to our products
-- DO NOT engage in conversations about politics, health, personal matters, etc.
+- Politely redirect off-topic questions
 
-If a customer asks something unrelated to products or shopping, politely redirect them:
-"I can only help with product questions and orders. What products can I help you find?"
+If customer asks something unrelated, redirect warmly in their language:
+- English: "I'd love to help, but I can only assist with products and orders! 😊 What can I help you find today?"
+- Khmer: "ខ្ញុំចង់ជួយណាស់ ប៉ុន្តែខ្ញុំអាចជួយតែផលិតផល និងការបញ្ជាទិញប៉ុណ្ណោះ! 😊 តើថ្ងៃនេះអ្នកចង់រកអី?"
 
-Use the following product context to answer succinctly:
-
+Product information available:
 ${context}` },
       { role: "user", content: text },
-    ], temperature: 0.7, max_tokens: 1000 }),
+    ], temperature: 0.9, max_tokens: 1000 }),
   });
   let tokensUsed = "0";
   // Try to read from response headers first (e.g., x-openai-tokens), otherwise fall back to JSON usage fields

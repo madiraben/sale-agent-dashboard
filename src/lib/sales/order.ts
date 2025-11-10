@@ -4,7 +4,7 @@ import logger from "../logger";
 
 export type OrderRequest = {
   tenantIds: string[];
-  contact: { name: string; email?: string | null; phone?: string | null };
+  contact: { name: string; email?: string | null; phone?: string | null; address?: string | null };
   cart: CartItem[];
   messengerSenderId?: string | null; // Optional Messenger sender ID for customer linking
 };
@@ -246,6 +246,7 @@ export async function createPendingOrder(req: OrderRequest): Promise<OrderResult
       tenant_id: tenantId,
       status: "pending",
       total,
+      delivery_address: req.contact.address || null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })

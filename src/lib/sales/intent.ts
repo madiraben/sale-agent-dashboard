@@ -1,7 +1,7 @@
 import { appConfig } from "@/lib/config";
 
 export type ExtractedItem = { name: string; qty?: number };
-export type ExtractedContact = { name?: string; email?: string; phone?: string };
+export type ExtractedContact = { name?: string; email?: string; phone?: string; address?: string };
 export type SalesIntent = {
   intent: "order" | "add_to_cart" | "modify_cart" | "confirm_order" | "provide_contact" | "query" | "cancel" | "unknown";
   items?: ExtractedItem[];
@@ -11,26 +11,54 @@ export type SalesIntent = {
 
 const SYSTEM = `You are an expert sales conversation analyst. Analyze the user's message in context of the conversation.
 
+LANGUAGE SUPPORT:
+- The user can write in ANY language (English, Khmer, etc.)
+- Understand intents regardless of language
+- Extract product names and contact info in their original language
+
 Extract STRICT JSON only with this shape:
 {
   "intent": "order" | "add_to_cart" | "modify_cart" | "confirm_order" | "provide_contact" | "query" | "cancel" | "unknown",
   "items": [{"name": string, "qty": number}],
-  "contact": {"name": string, "email": string, "phone": string},
+  "contact": {"name": string, "email": string, "phone": string, "address": string},
   "confidence": number (0-1)
 }
 
-Intent Classification:
-- "order": User wants to start ordering (e.g., "I want to buy", "I'd like to order")
-- "add_to_cart": User wants to add specific items (e.g., "add 2 shirts", "I want a phone")
-- "modify_cart": User wants to change quantities or remove items (e.g., "change to 3", "remove the shoes")
-- "confirm_order": User confirms the order (e.g., "yes", "confirm", "that's correct")
-- "provide_contact": User is providing contact information (e.g., "my name is John", "call me at 123-456")
-- "query": User is asking questions (e.g., "what's the price", "do you have...")
-- "cancel": User wants to cancel (e.g., "no", "cancel", "nevermind")
+Intent Classification (works for ANY language):
+- "order": User wants to start ordering
+  * English: "I want to buy", "I'd like to order"
+  * Khmer: "ចង់ទិញ", "ខ្ញុំចង់បញ្ជាទិញ", "យកមួយ"
+  
+- "add_to_cart": User wants to add specific items
+  * English: "add 2 shirts", "I want a phone"
+  * Khmer: "បន្ថែម", "យក", "ចង់បាន"
+  
+- "modify_cart": User wants to change quantities or remove items
+  * English: "change to 3", "remove the shoes"
+  * Khmer: "ផ្លាស់ប្តូរ", "ដកចេញ", "លុបចោល"
+  
+- "confirm_order": User confirms the order
+  * English: "yes", "confirm", "that's correct"
+  * Khmer: "បាទ/ចាស", "យល់ព្រម", "ត្រូវហើយ", "okie"
+  
+- "provide_contact": User is providing contact information
+  * English: "my name is John", "call me at 123-456"
+  * Khmer: "ឈ្មោះ", "លេខទូរសព្ទ", "អាស័យដ្ឋាន"
+  
+- "query": User is asking questions
+  * English: "what's the price", "do you have..."
+  * Khmer: "តម្លៃ", "មានអី", "មានអត់"
+  
+- "cancel": User wants to cancel
+  * English: "no", "cancel", "nevermind"
+  * Khmer: "ទេ", "លុបចោល", "បោះបង់"
+  
 - "unknown": Cannot determine intent
 
 Item Extraction Rules:
-- Extract product names as mentioned by user
+- Extract product names as mentioned by user OR referenced in conversation
+- If user says "I'll take it", "add that", "yes", "ok", look at recent bot messages for recommended products
+- Look for product names in the last bot message if user is confirming/accepting
 - Default qty to 1 if not specified
 - For modify_cart, extract what user wants to change
 - If user says "remove" or "delete", set qty to 0
@@ -39,6 +67,7 @@ Contact Extraction Rules:
 - Extract name only if explicitly stated (e.g., "my name is", "I'm", "this is")
 - Extract email only if valid format found
 - Extract phone only if valid phone number found (digits, dashes, spaces, +)
+- Extract address when user provides location/delivery information (street, city, building, etc.)
 - Be conservative - only extract if confident
 
 Confidence:
@@ -63,6 +92,9 @@ export async function extractSalesIntent(
       conversationHistory.slice(-6).forEach((msg) => {
         contextMsg += `${msg.role === "user" ? "Customer" : "Bot"}: ${msg.content}\n`;
       });
+      
+      // Add explicit hint for product references
+      contextMsg += `\nIMPORTANT: If the user says "yes", "I'll take it", "add that", "ok", etc., look for product names in the Bot's last message and extract those as items.\n`;
     }
 
     const resp = await fetch(appConfig.openai.baseUrl + "/chat/completions", {
