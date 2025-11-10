@@ -390,6 +390,7 @@ export async function handleConfirmingOrderStage(
             phone: session.contact.phone || null,
           },
           cart: session.cart,
+          messengerSenderId: session.external_user_id, // Link order to Messenger sender
         });
 
         return {
@@ -487,6 +488,64 @@ export async function handleCollectingContactStage(
   session: BotSession,
   userText: string
 ): Promise<StageResponse> {
+  // Check if we already have complete contact info (returning customer)
+  const hasCompleteInfo = session.contact?.name && 
+    (session.contact?.phone || session.contact?.email);
+  
+  if (hasCompleteInfo) {
+    // Ask for confirmation of existing info
+    const lowerText = userText.toLowerCase().trim();
+    
+    if (/^(yes|yeah|yep|sure|ok|okay|correct|confirm|that'?s? right|looks good)$/i.test(lowerText)) {
+      // Customer confirmed their info, create order
+      try {
+        const result = await createPendingOrder({
+          tenantIds,
+          contact: {
+            name: session.contact.name!,
+            email: session.contact.email || null,
+            phone: session.contact.phone || null,
+          },
+          cart: session.cart,
+          messengerSenderId: session.external_user_id,
+        });
+
+        const contactInfo = session.contact.phone || session.contact.email;
+
+        return {
+          reply: `🎉 Perfect! Order #${result?.orderId} created successfully!\n\nTotal: $${result?.total.toFixed(2)}\nItems: ${result?.itemCount}\n\nThank you ${session.contact.name}! We'll reach out to you at ${contactInfo}.\n\nAnything else I can help with?`,
+          newStage: "discovering",
+          updatedCart: clearCart(),
+          updatedContact: {},
+        };
+      } catch (error: any) {
+        logger.error("Order creation failed:", error);
+        return {
+          reply: `Sorry, there was an error creating your order: ${error.message}\n\nPlease try again or contact support.`,
+          newStage: "discovering",
+          updatedCart: clearCart(),
+          updatedContact: {},
+        };
+      }
+    }
+    
+    if (/^(no|nope|nah|wrong|incorrect|change|update)$/i.test(lowerText)) {
+      // Customer wants to update their info
+      return {
+        reply: "No problem! Let's update your information.\n\nWhat's your name?",
+        newStage: "collecting_contact",
+        updatedContact: {}, // Clear existing contact
+      };
+    }
+    
+    // Show confirmation prompt
+    const contactInfo = session.contact.phone || session.contact.email;
+    return {
+      reply: `I have your info on file:\n\nName: ${session.contact.name}\nContact: ${contactInfo}\n\nIs this still correct? (yes/no)`,
+      newStage: "collecting_contact",
+    };
+  }
+
   // FIRST: Check if message is off-topic (before any processing)
   if (isObviouslyOffTopic(userText)) {
     logger.info("Off-topic query in collecting_contact stage (pattern match)");
@@ -564,6 +623,7 @@ export async function handleCollectingContactStage(
         phone: updatedContact.phone || null,
       },
       cart: session.cart,
+      messengerSenderId: session.external_user_id, // Link order to Messenger sender
     });
 
     const contactInfo = hasValidPhone ? updatedContact.phone : updatedContact.email;

@@ -16,6 +16,7 @@ import {
   handleCollectingContactStage,
   StageResponse,
 } from "@/lib/sales/stages";
+import { getCustomerByMessengerId } from "@/lib/sales/order";
 
 export async function handleMessengerText(pageId: string, senderId: string, text: string) {
   const page = await findActivePageById(pageId);
@@ -35,10 +36,25 @@ export async function handleMessengerText(pageId: string, senderId: string, text
     });
 
     // Load or create session
-    const session: BotSession = await getSession(page.user_id, "messenger", senderId);
+    let session: BotSession = await getSession(page.user_id, "messenger", senderId);
+    
+    // Check for returning customer and pre-populate contact info
+    if (!session.contact?.name) {
+      const existingCustomer = await getCustomerByMessengerId(tenantIds, senderId);
+      if (existingCustomer) {
+        session.contact = {
+          name: existingCustomer.name,
+          email: existingCustomer.email || undefined,
+          phone: existingCustomer.phone || undefined,
+        };
+        logger.info(`Found returning customer: ${existingCustomer.name}`, { customerId: existingCustomer.id });
+      }
+    }
+    
     logger.info(`Messenger session stage: ${session.stage}`, { 
       cartItems: session.cart?.length || 0,
-      hasContact: !!session.contact?.name 
+      hasContact: !!session.contact?.name,
+      isReturning: !!session.contact?.name 
     });
 
     // Add user message to conversation history
@@ -157,10 +173,25 @@ export async function handleTelegramText(
     });
 
     // Load or create session
-    const session: BotSession = await getSession(userId, "telegram", String(chatId));
+    let session: BotSession = await getSession(userId, "telegram", String(chatId));
+    
+    // Check for returning customer and pre-populate contact info
+    if (!session.contact?.name) {
+      const existingCustomer = await getCustomerByMessengerId(tenantIds, String(chatId));
+      if (existingCustomer) {
+        session.contact = {
+          name: existingCustomer.name,
+          email: existingCustomer.email || undefined,
+          phone: existingCustomer.phone || undefined,
+        };
+        logger.info(`Found returning Telegram customer: ${existingCustomer.name}`, { customerId: existingCustomer.id });
+      }
+    }
+    
     logger.info(`Telegram session stage: ${session.stage}`, { 
       cartItems: session.cart?.length || 0,
-      hasContact: !!session.contact?.name 
+      hasContact: !!session.contact?.name,
+      isReturning: !!session.contact?.name 
     });
 
     // Add user message to conversation history

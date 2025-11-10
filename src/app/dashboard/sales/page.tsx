@@ -43,9 +43,11 @@ export default function Sales() {
   const [selectedRow, setSelectedRow] = React.useState<Row | null>(null);
   const [rows, setRows] = React.useState<Row[]>([]);
   const [savingId, setSavingId] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(false);
 
-  React.useEffect(() => {
-    async function load() {
+  const loadOrders = React.useCallback(async () => {
+    setLoading(true);
+    try {
       const { data: orders } = await supabase
         .from("orders")
         .select("id, customer_id, date, status, total, customers(name)")
@@ -72,9 +74,17 @@ export default function Sales() {
         items: itemsByOrder[o.id] ?? [],
       }));
       setRows(mapped);
+    } finally {
+      setLoading(false);
     }
-    load();
-  }, []);
+  }, [supabase]);
+
+  React.useEffect(() => {
+    loadOrders();
+    // Auto-refresh every 10 seconds
+    const interval = setInterval(loadOrders, 10000);
+    return () => clearInterval(interval);
+  }, [loadOrders]);
 
   const filtered = React.useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -126,6 +136,25 @@ export default function Sales() {
         </div>
         <div className="flex items-center gap-2">
           <SearchInput className="hidden md:block" placeholder="Search orders" value={q} onChange={(e) => debouncedSetQ(e.target.value)} />
+          <Button 
+            variant="outline" 
+            onClick={loadOrders}
+            disabled={loading}
+            className="flex items-center gap-2"
+          >
+            <svg 
+              width="16" 
+              height="16" 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke="currentColor" 
+              strokeWidth="2"
+              className={loading ? "animate-spin" : ""}
+            >
+              <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+            </svg>
+            {loading ? "Refreshing..." : "Refresh"}
+          </Button>
           <Link href="/dashboard/sales/new">
             <Button>New Order</Button>
           </Link>

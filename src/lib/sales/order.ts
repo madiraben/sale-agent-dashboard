@@ -1,10 +1,12 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { CartItem } from "./session";
+import logger from "../logger";
 
 export type OrderRequest = {
   tenantIds: string[];
   contact: { name: string; email?: string | null; phone?: string | null };
   cart: CartItem[];
+  messengerSenderId?: string | null; // Optional Messenger sender ID for customer linking
 };
 
 export type OrderResult = {
@@ -16,21 +18,49 @@ export type OrderResult = {
 
 /**
  * Find existing customer or create new one
+ * Priority: Messenger ID > Email > Phone
  */
 async function findOrCreateCustomer(
   tenantIds: string[],
   name: string,
   email?: string | null,
-  phone?: string | null
+  phone?: string | null,
+  messengerSenderId?: string | null
 ): Promise<string> {
   const admin = createSupabaseAdminClient();
+
+  // 1. Try to find by Messenger sender ID first (most reliable for returning customers)
+  if (messengerSenderId) {
+    const { data } = await admin
+      .from("customers")
+      .select("id")
+      .in("tenant_id", tenantIds)
+      .eq("messenger_sender_id", messengerSenderId)
+      .maybeSingle();
+
+    if (data?.id) {
+      // Update customer info (they might have provided new/updated contact info)
+      await admin
+        .from("customers")
+        .update({ 
+          name, 
+          email: email || null, 
+          phone: phone || null,
+          updated_at: new Date().toISOString() 
+        })
+        .eq("id", data.id);
+      
+      logger.info(`Found existing customer by Messenger ID: ${data.id}`);
+      return data.id as string;
+    }
+  }
 
   // Validate: Must have at least one contact method
   if (!email && !phone) {
     throw new Error("Customer must have at least one contact method (email or phone)");
   }
 
-  // Try to find existing customer by email first
+  // 2. Try to find existing customer by email
   if (email) {
     const { data } = await admin
       .from("customers")
@@ -40,18 +70,23 @@ async function findOrCreateCustomer(
       .maybeSingle();
 
     if (data?.id) {
-      // Update phone if provided
-      if (phone) {
-        await admin
-          .from("customers")
-          .update({ phone, name, updated_at: new Date().toISOString() })
-          .eq("id", data.id);
+      // Link Messenger ID to existing customer
+      const updateData: any = { phone, name, updated_at: new Date().toISOString() };
+      if (messengerSenderId) {
+        updateData.messenger_sender_id = messengerSenderId;
       }
+      
+      await admin
+        .from("customers")
+        .update(updateData)
+        .eq("id", data.id);
+      
+      logger.info(`Linked Messenger ID to existing customer (by email): ${data.id}`);
       return data.id as string;
     }
   }
 
-  // Try to find by phone
+  // 3. Try to find by phone
   if (phone) {
     const { data } = await admin
       .from("customers")
@@ -61,18 +96,23 @@ async function findOrCreateCustomer(
       .maybeSingle();
 
     if (data?.id) {
-      // Update email if provided
-      if (email) {
-        await admin
-          .from("customers")
-          .update({ email, name, updated_at: new Date().toISOString() })
-          .eq("id", data.id);
+      // Link Messenger ID to existing customer
+      const updateData: any = { email, name, updated_at: new Date().toISOString() };
+      if (messengerSenderId) {
+        updateData.messenger_sender_id = messengerSenderId;
       }
+      
+      await admin
+        .from("customers")
+        .update(updateData)
+        .eq("id", data.id);
+      
+      logger.info(`Linked Messenger ID to existing customer (by phone): ${data.id}`);
       return data.id as string;
     }
   }
 
-  // Create new customer (use first tenant_id)
+  // 4. Create new customer (use first tenant_id)
   const tenantId = tenantIds[0];
   const { data: inserted, error } = await admin
     .from("customers")
@@ -81,6 +121,7 @@ async function findOrCreateCustomer(
       name: name.trim() || "Guest",
       email: email || null,
       phone: phone || null,
+      messenger_sender_id: messengerSenderId || null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
@@ -101,7 +142,28 @@ async function findOrCreateCustomer(
     throw new Error(`Failed to create customer: ${error.message || 'Unknown error'}`);
   }
 
+  logger.info(`Created new customer with Messenger ID: ${(inserted as any).id}`);
   return (inserted as any).id as string;
+}
+
+/**
+ * Get customer info by Messenger sender ID
+ * Returns customer contact info if found, null otherwise
+ */
+export async function getCustomerByMessengerId(
+  tenantIds: string[],
+  messengerSenderId: string
+): Promise<{ id: string; name: string; email: string | null; phone: string | null } | null> {
+  const admin = createSupabaseAdminClient();
+
+  const { data } = await admin
+    .from("customers")
+    .select("id, name, email, phone")
+    .in("tenant_id", tenantIds)
+    .eq("messenger_sender_id", messengerSenderId)
+    .maybeSingle();
+
+  return data || null;
 }
 
 /**
@@ -169,14 +231,19 @@ export async function createPendingOrder(req: OrderRequest): Promise<OrderResult
     req.tenantIds,
     req.contact.name,
     req.contact.email,
-    req.contact.phone
+    req.contact.phone,
+    req.messengerSenderId
   );
+
+  // Use first tenant_id
+  const tenantId = req.tenantIds[0];
 
   // Create order
   const { data: order, error: orderError } = await admin
     .from("orders")
     .insert({
       customer_id: customerId,
+      tenant_id: tenantId,
       status: "pending",
       total,
       created_at: new Date().toISOString(),
@@ -196,6 +263,7 @@ export async function createPendingOrder(req: OrderRequest): Promise<OrderResult
   const orderItems = req.cart.map((item) => ({
     order_id: orderId,
     product_id: item.product_id,
+    tenant_id: tenantId,
     qty: item.qty,
     price: item.price,
     created_at: new Date().toISOString(),
@@ -221,10 +289,12 @@ export async function createPendingOrder(req: OrderRequest): Promise<OrderResult
         qty: item.qty,
       });
     } catch (err) {
-      console.error("Failed to update stock:", err);
+      logger.error("Failed to update stock:", err);
       // Don't fail the order, but log it
     }
   }
+
+  logger.info(`[INFO] Order created successfully: { orderId: ${orderId}, customerId: ${customerId}, total: ${total}, items: ${req.cart.length} }`);
 
   return {
     orderId,

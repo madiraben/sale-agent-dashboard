@@ -15,6 +15,10 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ error: "forbidden" }, { status: 403 });
 }
 
+// Track recent message IDs to prevent duplicate processing
+const processedMessages = new Set<string>();
+const MESSAGE_EXPIRY = 60000; // 1 minute
+
 // POST: Messenger webhook
 export async function POST(req: NextRequest) {
   const raw = await req.text();
@@ -22,23 +26,47 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalid_signature" }, { status: 403 });
   }
   const body = JSON.parse(raw || "{}");
-  try {
-    const entries: any[] = Array.isArray(body?.entry) ? body.entry : [];
-    for (const entry of entries) {
-      const pageId: string | undefined = entry?.id;
-      const messaging: any[] = Array.isArray(entry?.messaging) ? entry.messaging : [];
-      if (!pageId || messaging.length === 0) continue;
-      for (const evt of messaging) {
-        const senderId = evt?.sender?.id;
-        const text: string | undefined = evt?.message?.text;
-        if (!senderId || !text) continue;
-        await handleMessengerText(pageId, senderId, text);
+  
+  // Respond to Facebook immediately to prevent retries
+  const entries: any[] = Array.isArray(body?.entry) ? body.entry : [];
+  
+  // Process messages asynchronously (don't await)
+  (async () => {
+    try {
+      for (const entry of entries) {
+        const pageId: string | undefined = entry?.id;
+        const messaging: any[] = Array.isArray(entry?.messaging) ? entry.messaging : [];
+        if (!pageId || messaging.length === 0) continue;
+        
+        for (const evt of messaging) {
+          const senderId = evt?.sender?.id;
+          const text: string | undefined = evt?.message?.text;
+          const messageId = evt?.message?.mid; // Facebook message ID
+          
+          if (!senderId || !text) continue;
+          
+          // Prevent duplicate processing using message ID
+          const dedupeKey = messageId || `${pageId}:${senderId}:${text}:${evt?.timestamp}`;
+          if (processedMessages.has(dedupeKey)) {
+            console.log(`[INFO] Skipping duplicate message: ${dedupeKey}`);
+            continue;
+          }
+          
+          // Mark as processed
+          processedMessages.add(dedupeKey);
+          setTimeout(() => processedMessages.delete(dedupeKey), MESSAGE_EXPIRY);
+          
+          // Process message
+          await handleMessengerText(pageId, senderId, text);
+        }
       }
+    } catch (e: any) {
+      console.error("[ERROR] Failed to process webhook:", e?.message || e);
     }
-    return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "unexpected_error" }, { status: 500 });
-  }
+  })();
+  
+  // Return immediately
+  return NextResponse.json({ ok: true });
 }
 
 
