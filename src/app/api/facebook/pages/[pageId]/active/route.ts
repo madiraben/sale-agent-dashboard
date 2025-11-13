@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-export async function POST(req: NextRequest, { params }: { params: { pageId: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ pageId: string }> }) {
   const appUrl = process.env.APP_URL;
   const origin = req.headers.get("origin") || "";
   if (appUrl && origin && origin !== appUrl) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  const pageId = params?.pageId;
+  const { pageId } = await params;
   if (!pageId) return NextResponse.json({ error: "missing_page_id" }, { status: 400 });
 
   const body = await req.json().catch(() => ({}));

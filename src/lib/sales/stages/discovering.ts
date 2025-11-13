@@ -48,6 +48,7 @@ export async function handleDiscoveringStage(
       conversationHistory: conversationContext,
       systemContext: "Customer cancelled their order. Cart has been cleared. Ask how you can help them now.",
     });
+    logger.info("AI reply:", reply);
 
     return {
       reply,
@@ -62,8 +63,10 @@ export async function handleDiscoveringStage(
     // First, check if question is obviously off-topic (fast check)
     if (isObviouslyOffTopic(userText)) {
       logger.info("Obviously off-topic query detected (pattern match)");
+      const reply = getOffTopicResponse(1.0, userText);
+      logger.info("AI reply:", reply);
       return {
-        reply: getOffTopicResponse(1.0, userText),
+        reply,
         newStage: "discovering",
       };
     }
@@ -78,8 +81,10 @@ export async function handleDiscoveringStage(
         confidence: topicValidation.confidence, 
         reason: topicValidation.reason 
       });
+      const reply = getOffTopicResponse(topicValidation.confidence, userText);
+      logger.info("AI reply:", reply);
       return {
-        reply: getOffTopicResponse(topicValidation.confidence, userText),
+        reply,
         newStage: "discovering",
       };
     }
@@ -97,7 +102,7 @@ export async function handleDiscoveringStage(
           conversationHistory: conversationContext,
           systemContext: "Customer asked about their cart, but cart is empty. Let them know cart is empty and ask what they'd like to order.",
         });
-        
+        logger.info("AI reply:", reply);
         return {
           reply,
           newStage: "discovering",
@@ -115,7 +120,7 @@ export async function handleDiscoveringStage(
         cartSummary,
         systemContext: "Customer asked about their cart. Show them what's in their cart and ask if they want to add more items, modify, or proceed to checkout.",
       });
-      
+      logger.info("AI reply:", reply);
       return {
         reply,
         newStage: "discovering",
@@ -139,7 +144,7 @@ export async function handleDiscoveringStage(
           conversationHistory: conversationContext,
           systemContext: "No products found in database. Let customer know we don't have products available right now and apologize.",
         });
-        
+        logger.info("AI reply:", reply);
         return {
           reply,
           newStage: "discovering",
@@ -158,7 +163,7 @@ export async function handleDiscoveringStage(
         productResults: productList,
         systemContext: `Customer wants to browse products. Show them these REAL products from our database. Ask which one they'd like to add to their cart. DO NOT make up or invent products - only show what's provided.`,
       });
-      
+      logger.info("AI reply:", reply);
       return {
         reply,
         newStage: "discovering",
@@ -180,7 +185,7 @@ export async function handleDiscoveringStage(
         cartSummary,
         systemContext: `Answer customer's question: ${ragReply}\n\nThen remind them about their cart and suggest they can continue shopping or checkout.`,
       });
-      
+      logger.info("AI reply:", reply);
       return {
         reply,
         newStage: "discovering",
@@ -194,7 +199,7 @@ export async function handleDiscoveringStage(
       conversationHistory: conversationContext,
       systemContext: `Answer from knowledge base: ${ragReply}\n\nProvide this answer naturally and ask if they need help with anything else.`,
     });
-    
+    logger.info("AI reply:", reply);
     return {
       reply,
       newStage: "discovering",
@@ -212,7 +217,7 @@ export async function handleDiscoveringStage(
         conversationHistory: conversationContext,
         systemContext: "Customer wants to modify cart but it's empty. Let them know and ask what they'd like to order.",
       });
-
+      logger.info("AI reply:", reply);
       return {
         reply,
         newStage: "discovering",
@@ -237,7 +242,7 @@ export async function handleDiscoveringStage(
         cartSummary: cartDisplay,
         systemContext: `Successfully removed "${itemToRemove?.name}" from cart. ${updatedCart.length > 0 ? 'Show updated cart and ask if they want to continue shopping or checkout.' : 'Cart is now empty. Ask what they would like to order.'}`,
       });
-
+      logger.info("AI reply:", reply);
       return {
         reply,
         newStage: "discovering",
@@ -258,7 +263,7 @@ export async function handleDiscoveringStage(
         cartSummary: cartDisplay,
         systemContext: `Updated item quantity to ${modification.newQuantity}. Show updated cart and ask if they need anything else.`,
       });
-
+      logger.info("AI reply:", reply);
       return {
         reply,
         newStage: "discovering",
@@ -273,7 +278,7 @@ export async function handleDiscoveringStage(
         conversationHistory: conversationContext,
         systemContext: "Customer wants to clear their entire cart. Confirm cart has been cleared and ask what they'd like to order.",
       });
-
+      logger.info("AI reply:", reply);
       return {
         reply,
         newStage: "discovering",
@@ -292,7 +297,7 @@ export async function handleDiscoveringStage(
       cartSummary: cartDisplay,
       systemContext: "Customer wants to modify cart but request was unclear. Show current cart and ask what specific changes they want (remove item, change quantity, etc.).",
     });
-
+    logger.info("AI reply:", reply);
     return {
       reply,
       newStage: "discovering",
@@ -340,6 +345,7 @@ export async function handleDiscoveringStage(
           conversationHistory: conversationContext,
           systemContext: "Customer wants to order but didn't specify which products. Ask them what they'd like to order.",
         });
+        logger.info("AI reply:", reply);
 
         return {
           reply,
@@ -366,6 +372,7 @@ export async function handleDiscoveringStage(
         conversationHistory: conversationContext,
         systemContext: `No products found matching: "${productNames}". Apologize and suggest they describe differently or ask what products are available.`,
       });
+      logger.info("AI reply:", reply);
 
       return {
         reply,
@@ -403,6 +410,7 @@ export async function handleDiscoveringStage(
         systemContext: "Products successfully added to cart! Show enthusiasm. Ask if they want to add more items or proceed to checkout.",
       });
 
+      logger.info("AI reply:", reply);
       return {
         reply,
         newStage: "discovering",
@@ -429,7 +437,7 @@ export async function handleDiscoveringStage(
       productResults,
       systemContext: "Multiple products found. Show the options and ask customer to specify which one they want.",
     });
-    
+    logger.info("AI reply:", reply);
     return {
       reply,
       newStage: "confirming_products",
@@ -446,6 +454,7 @@ export async function handleDiscoveringStage(
         conversationHistory: conversationContext,
         systemContext: "Customer tried to checkout but cart is empty. Let them know and ask what they'd like to order.",
       });
+      logger.info("AI reply:", reply);
 
       return {
         reply,
@@ -464,7 +473,8 @@ export async function handleDiscoveringStage(
       cartSummary: cartDisplay,
       systemContext: "Customer wants to checkout. Show their cart and ask them to confirm the order (yes/no).",
     });
-    
+    logger.info("AI reply:", reply);
+
     return {
       reply,
       newStage: "confirming_order",
@@ -479,12 +489,11 @@ export async function handleDiscoveringStage(
     cartSummary: !isCartEmpty(session.cart) ? await formatCartDisplay(await getCartProducts(tenantIds, session.cart)) : undefined,
     systemContext: "Customer is browsing or just starting. Greet them warmly and offer to help with shopping.",
   });
+  logger.info("AI reply:", reply);
 
   return {
     reply,
     newStage: "discovering",
   };
 }
-
-
 

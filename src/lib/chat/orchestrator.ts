@@ -213,18 +213,22 @@ export async function handleTelegramText(
     
     switch (session.stage) {
       case "discovering":
+        logger.info("handleDiscoveringStage", { text });
         stageResponse = await handleDiscoveringStage(tenantIds, session, text);
         break;
         
       case "confirming_products":
+        logger.info("handleConfirmingProductsStage", { text });
         stageResponse = await handleConfirmingProductsStage(tenantIds, session, text);
         break;
         
       case "confirming_order":
+        logger.info("handleConfirmingOrderStage", { text });
         stageResponse = await handleConfirmingOrderStage(tenantIds, session, text);
         break;
         
       case "collecting_contact":
+        logger.info("handleCollectingContactStage", { text });
         stageResponse = await handleCollectingContactStage(tenantIds, session, text);
         break;
         

@@ -193,6 +193,17 @@ export default function Profile() {
     }
   }
 
+  async function disconnectFacebook() {
+    if (fbBusy) return;
+    setFbBusy(true);
+    try {
+      await fetch("/api/facebook/connected", { method: "DELETE" });
+      await refreshFb();
+    } finally {
+      setFbBusy(false);
+    }
+  }
+
   async function removePage(pageId: string) {
     if (!pageId || fbBusy) return;
     setFbBusy(true);
@@ -379,9 +390,21 @@ export default function Profile() {
                 <div>
                   <div className="mb-2 flex items-center justify-between">
                     <div className="text-sm text-gray-700">Facebook</div>
-                    <a href="/api/facebook/oauth/start">
-                      <Button variant="outline">{fb?.id ? "Change" : "Connect"}</Button>
-                    </a>
+                    <div className="flex items-center gap-2">
+                      <a href="/api/facebook/oauth/start">
+                        <Button variant="outline">{fb?.id ? "Change" : "Connect"}</Button>
+                      </a>
+                      {fb?.id ? (
+                        <Button
+                          variant="outline"
+                          className="text-rose-600 border-rose-200 hover:bg-rose-50"
+                          onClick={disconnectFacebook}
+                          disabled={fbBusy}
+                        >
+                          Disconnect
+                        </Button>
+                      ) : null}
+                    </div>
                   </div>
                   <FacebookProfileSection />
                 </div>

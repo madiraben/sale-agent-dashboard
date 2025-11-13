@@ -264,10 +264,8 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
 
         // 2) Build embedding payload and call API
         // ============================================================
-        // DEVELOPMENT MODE: Automatic embeddings temporarily disabled
-        // TO RE-ENABLE: Uncomment the code below and set up Google Cloud credentials
+        // Ensure Google Cloud credentials are configured for embeddings
         // ============================================================
-        /* EMBEDDINGS DISABLED FOR DEVELOPMENT
         try {
           let imageBase64: string | undefined;
           if (imageFile) {
@@ -297,7 +295,6 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
             await supabase.from("products").update({ embedding: combined }).eq("id", inserted.id);
           }
         } catch {}
-        */
       }
       setSaving(false);
       onClose();
