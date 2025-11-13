@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
           // Process message
           logger.info(`[INFO] Recieved message: ${text}`);
           const result = await handleMessengerText(pageId, senderId, text);
-          logger.info(`[INFO] Message processed: ${result}`);
+          logger.info(`[INFO] Message processed: ${JSON.stringify(result)}`);
         }
       }
     } catch (e: any) {

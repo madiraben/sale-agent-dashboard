@@ -3,6 +3,8 @@
 import Link from "next/link";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import SearchInput from "@/components/ui/search-input";
+import ConfirmDialog from "@/components/ui/confirm-dialog";
+import IconButton from "@/components/ui/icon-button";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { CustomerWithStats, Currency } from "@/types";
 
@@ -12,6 +14,9 @@ export default function Customers() {
   const [rows, setRows] = useState<CustomerWithStats[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmRow, setConfirmRow] = useState<CustomerWithStats | null>(null);
 
   const loadCustomers = useCallback(async () => {
     setLoading(true);
@@ -34,6 +39,27 @@ export default function Customers() {
   useEffect(() => {
     loadCustomers();
   }, [loadCustomers]);
+
+  const handleDelete = useCallback(
+    async (row: CustomerWithStats) => {
+      // Called from confirmation dialog
+      setDeletingId(row.id);
+      setError(null);
+      try {
+        const { error: supErr } = await supabase.from("customers").delete().eq("id", row.id);
+        if (supErr) throw supErr;
+        setRows((prev) => prev.filter((r) => r.id !== row.id));
+        setConfirmOpen(false);
+        setConfirmRow(null);
+      } catch (e: any) {
+        console.error("Failed to delete customer", e?.message || e);
+        setError(e?.message ?? "Failed to delete customer");
+      } finally {
+        setDeletingId(null);
+      }
+    },
+    [supabase]
+  );
 
   // Simple debounce for search input
   useEffect(() => {
@@ -61,22 +87,18 @@ export default function Customers() {
         </div>
         <div className="flex items-center gap-2">
           <SearchInput className="hidden md:block" value={query} onChange={(e) => setQuery(e.target.value)} />
-          <button
-            aria-label="Refresh"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50"
-            onClick={() => loadCustomers()}
-          >
+          <IconButton aria-label="Refresh" onClick={() => loadCustomers()}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M3 6h18M6 12h12M10 18h4" />
             </svg>
-          </button>
-          <button aria-hidden className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50">
+          </IconButton>
+          <IconButton aria-hidden>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <circle cx="12" cy="5" r="1.5" />
               <circle cx="12" cy="12" r="1.5" />
               <circle cx="12" cy="19" r="1.5" />
             </svg>
-          </button>
+          </IconButton>
         </div>
       </div>
 
@@ -127,13 +149,31 @@ export default function Customers() {
                   <td className="px-4 py-3">{r.orders_count}</td>
                   <td className="px-4 py-3">{Currency(r.total as number)}</td>
                   <td className="px-4 py-3">
-                    <button className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-100" aria-label="More">
+                    <IconButton round className="h-8 w-8" aria-label="More">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                         <circle cx="12" cy="5" r="1.5" />
                         <circle cx="12" cy="12" r="1.5" />
                         <circle cx="12" cy="19" r="1.5" />
                       </svg>
-                    </button>
+                    </IconButton>
+                    <IconButton
+                      className="ml-1 h-8 w-8 border-rose-200 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      aria-label="Delete"
+                      onClick={() => {
+                        setConfirmRow(r);
+                        setConfirmOpen(true);
+                      }}
+                      disabled={deletingId === r.id || loading}
+                      title={deletingId === r.id ? "Deleting..." : "Delete customer and all orders"}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <path d="M3 6h18" />
+                        <path d="M8 6V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v1" />
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                        <path d="M10 11v6" />
+                        <path d="M14 11v6" />
+                      </svg>
+                    </IconButton>
                   </td>
                 </tr>
               ))}
@@ -141,6 +181,29 @@ export default function Customers() {
           </table>
         )}
       </div>
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Delete customer"
+        description={
+          confirmRow ? (
+            <div>
+              Are you sure you want to delete <span className="font-medium">"{confirmRow.name}"</span> and all of their orders? This action cannot be undone.
+            </div>
+          ) : null
+        }
+        confirmText="Delete"
+        cancelText="Cancel"
+        destructive
+        busy={!!deletingId}
+        onCancel={() => {
+          if (deletingId) return;
+          setConfirmOpen(false);
+          setConfirmRow(null);
+        }}
+        onConfirm={() => {
+          if (confirmRow) handleDelete(confirmRow);
+        }}
+      />
     </div>
   );
 }

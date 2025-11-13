@@ -1,5 +1,5 @@
 import { findActivePageById, getTenantIdsForUser } from "@/lib/facebook/repository";
-import { sendMessengerText } from "@/lib/facebook/transport";
+import { sendMessengerText, showTypingIndicator, markMessageAsSeen } from "@/lib/facebook/transport";
 import { sendTelegramText } from "@/lib/telegram/transport";
 import logger from "../logger";
 import { 
@@ -26,6 +26,12 @@ export async function handleMessengerText(pageId: string, senderId: string, text
   if (tenantIds.length === 0) return { ok: false, reason: "No tenants found" } as const;
 
   try {
+    // Mark message as seen and show typing indicator immediately
+    await Promise.all([
+      markMessageAsSeen(page.page_token, senderId),
+      showTypingIndicator(page.page_token, senderId)
+    ]);
+
     // Log incoming user message
     await logChatMessage({
       owner_user_id: page.user_id,
@@ -34,7 +40,7 @@ export async function handleMessengerText(pageId: string, senderId: string, text
       sender: "user",
       message: text,
     });
-    logger.info(`[INFO] Loading or creating session for Messenger user: ${senderId}`);
+    // logger.info(`[INFO] Loading or creating session for Messenger user: ${senderId}`);
     // Load or create session
     let session: BotSession = await getSession(page.user_id, "messenger", senderId);
     logger.info(`[INFO] Session loaded: ${session}`);
@@ -51,7 +57,7 @@ export async function handleMessengerText(pageId: string, senderId: string, text
         logger.info(`Found returning customer: ${existingCustomer.name}`, { customerId: existingCustomer.id });
       }
     }
-    logger.info(`[INFO] Session stage: ${session.stage}`);
+    logger.info(`Session stage: ${session.stage}`);
     logger.info(`Messenger session stage: ${session.stage}`, { 
       cartItems: session.cart?.length || 0,
       hasContact: !!session.contact?.name,

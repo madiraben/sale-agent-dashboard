@@ -63,4 +63,3 @@ export default async function DashboardLayout({ children }: { children: React.Re
   );
 }
 
-// Billing gate is implemented as a client component in components/billing-gate.tsx

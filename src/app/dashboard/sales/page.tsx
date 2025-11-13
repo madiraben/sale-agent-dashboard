@@ -19,17 +19,6 @@ type Row = {
   items?: Array<{ name: string; qty: number; price: number }>;
 };
 
-function statusColor(s: Row["status"]) {
-  switch (s) {
-    case "paid":
-      return "bg-emerald-100 text-emerald-700 border-emerald-200";
-    case "pending":
-      return "bg-amber-100 text-amber-700 border-amber-200";
-    case "refunded":
-      return "bg-rose-100 text-rose-700 border-rose-200";
-  }
-}
-
 export default function Sales() {
   const supabase = React.useMemo(() => createSupabaseBrowserClient(), []);
   const [q, setQ] = React.useState("");
@@ -44,14 +33,28 @@ export default function Sales() {
   const [rows, setRows] = React.useState<Row[]>([]);
   const [savingId, setSavingId] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const [totalCount, setTotalCount] = React.useState(0);
+  const ITEMS_PER_PAGE = 15;
 
   const loadOrders = React.useCallback(async () => {
     setLoading(true);
     try {
-      const { data: orders } = await supabase
+      // Calculate pagination range
+      const from = (currentPage - 1) * ITEMS_PER_PAGE;
+      const to = from + ITEMS_PER_PAGE - 1;
+
+      // Fetch total count and paginated orders
+      const { data: orders, count } = await supabase
         .from("orders")
-        .select("id, customer_id, date, status, total, customers(name)")
-        .order("date", { ascending: false });
+        .select("id, customer_id, date, status, total, customers(name)", { count: "exact" })
+        .order("date", { ascending: false })
+        .range(from, to);
+
+      if (count !== null) {
+        setTotalCount(count);
+      }
+
       const ids = (orders as any)?.map((o: any) => o.id) ?? [];
       let itemsByOrder: Record<string, Array<{ name: string; qty: number; price: number }>> = {};
       if (ids.length) {
@@ -77,7 +80,7 @@ export default function Sales() {
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, currentPage, ITEMS_PER_PAGE]);
 
   React.useEffect(() => {
     loadOrders();
@@ -95,6 +98,8 @@ export default function Sales() {
   }, [q, rows]);
 
   const grandTotal = React.useMemo(() => filtered.reduce((sum, r) => sum + r.total, 0), [filtered]);
+  
+  const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
 
   async function setOrderStatus(orderId: string, next: Row["status"]) {
     try {
@@ -162,8 +167,23 @@ export default function Sales() {
       </div>
 
       <div className="mb-3 flex items-center justify-between text-sm">
-        <div className="text-gray-600">Total orders: <span className="font-medium text-gray-900">{filtered.length}</span></div>
-        <div className="text-gray-600">Grand total: <span className="font-medium text-gray-900">{Currency(grandTotal)}</span></div>
+        <div className="text-gray-600">
+          {q ? (
+            <>
+              Showing {filtered.length} of {totalCount} orders
+            </>
+          ) : (
+            <>
+              Total orders: <span className="font-medium text-gray-900">{totalCount}</span>
+              {totalPages > 1 && (
+                <span className="ml-2 text-gray-500">
+                  (Page {currentPage} of {totalPages})
+                </span>
+              )}
+            </>
+          )}
+        </div>
+        <div className="text-gray-600">Page total: <span className="font-medium text-gray-900">{Currency(grandTotal)}</span></div>
       </div>
 
       <div className="overflow-x-auto">
@@ -239,6 +259,68 @@ export default function Sales() {
           </tbody>
         </table>
       </div>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="mt-4 flex items-center justify-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            disabled={currentPage === 1 || loading}
+            className="px-3 py-1.5"
+          >
+            Previous
+          </Button>
+          
+          <div className="flex items-center gap-1">
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {
+              // Show first page, last page, current page, and pages around current
+              const showPage =
+                pageNum === 1 ||
+                pageNum === totalPages ||
+                (pageNum >= currentPage - 2 && pageNum <= currentPage + 2);
+              
+              // Show ellipsis
+              const showEllipsisBefore = pageNum === currentPage - 3 && currentPage > 4;
+              const showEllipsisAfter = pageNum === currentPage + 3 && currentPage < totalPages - 3;
+
+              if (!showPage && !showEllipsisBefore && !showEllipsisAfter) {
+                return null;
+              }
+
+              if (showEllipsisBefore || showEllipsisAfter) {
+                return (
+                  <span key={pageNum} className="px-2 text-gray-400">
+                    ...
+                  </span>
+                );
+              }
+
+              return (
+                <Button
+                  key={pageNum}
+                  variant={pageNum === currentPage ? "primary" : "outline"}
+                  onClick={() => setCurrentPage(pageNum)}
+                  disabled={loading}
+                  className="min-w-[40px] px-3 py-1.5"
+                >
+                  {pageNum}
+                </Button>
+              );
+            })}
+          </div>
+
+          <Button
+            variant="outline"
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages || loading}
+            className="px-3 py-1.5"
+          >
+            Next
+          </Button>
+        </div>
+      )}
+
       {selectedRow ? (
         <OrderDetailDialog
           row={selectedRow}
