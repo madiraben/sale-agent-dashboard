@@ -1,4 +1,4 @@
-import { completeWithContext } from "@/lib/rag/llm";
+import { appConfig } from "@/lib/config";
 
 export interface IntentDetectionResult {
   isPurchase: boolean;
@@ -54,10 +54,21 @@ Rules:
 JSON:`;
 
   try {
-    const response = await completeWithContext(
-      "You are an intent classification expert. Return only valid JSON.",
-      prompt
-    );
+    const resp = await fetch(appConfig.openai.baseUrl + "/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${appConfig.openai.apiKey}` },
+      body: JSON.stringify({
+        model: appConfig.openai.model,
+        messages: [
+          { role: "system", content: "You are an intent classification expert. Return only valid JSON." },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0,
+        max_tokens: 600,
+      }),
+    });
+    const j = await resp.json().catch(() => null);
+    const response = j?.choices?.[0]?.message?.content ?? "";
 
     // Extract JSON from response
     const jsonMatch = response.match(/\{[\s\S]*\}/);
