@@ -11,75 +11,30 @@ steps:
       - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${SHORT_SHA}'
       - '-t'
       - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:latest'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${BRANCH_NAME}-latest'
       - .
     id: Build
 
-  # Push both tags
+  # Push all tags
   - name: gcr.io/cloud-builders/docker
     args:
       - push
-      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${SHORT_SHA}'
-    id: Push-SHA
-  
-  - name: gcr.io/cloud-builders/docker
-    args:
-      - push
-      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:latest'
-    id: Push-Latest
-
-  # Deploy to Cloud Run
-  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
-    entrypoint: gcloud
-    args:
-      - run
-      - deploy
-      - ${_SERVICE}
-      - '--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${SHORT_SHA}'
-      - '--region=${_REGION}'
-      - '--platform=managed'
-      - '--allow-unauthenticated'
-      - '--port=8080'
-      - '--cpu=1'
-      - '--memory=1Gi'
-      - '--max-instances=${_MAX_INSTANCES}'
-      - '--set-env-vars=NEXT_PUBLIC_SUPABASE_URL=${_NEXT_PUBLIC_SUPABASE_URL},NEXT_PUBLIC_SUPABASE_ANON_KEY=${_NEXT_PUBLIC_SUPABASE_ANON_KEY}'
-      - '--set-env-vars=OPENAI_BASE_URL=https://api.openai.com/v1,OPENAI_MODEL=gpt-4o-mini'
-      - '--set-env-vars=STRIPE_PRICE_MONTHLY=${_STRIPE_PRICE_MONTHLY},STRIPE_PRICE_QUARTERLY=${_STRIPE_PRICE_QUARTERLY},STRIPE_PRICE_YEARLY=${_STRIPE_PRICE_YEARLY}'
-      - '--set-env-vars=FB_APP_ID=${_FB_APP_ID},FB_WEBHOOK_VERIFY_TOKEN=${_FB_WEBHOOK_VERIFY_TOKEN}'
-      - '--set-env-vars=GOOGLE_CLOUD_PROJECT_ID=${_GOOGLE_CLOUD_PROJECT_ID},GOOGLE_CLOUD_LOCATION=${_GOOGLE_CLOUD_LOCATION},GOOGLE_CLOUD_CLIENT_EMAIL=${_GOOGLE_CLOUD_CLIENT_EMAIL}'
-      - '--set-secrets=SUPABASE_SERVICE_ROLE_KEY=supabase-service-role:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest,OPENAI_API_KEY=openai-api-key:latest,FB_APP_SECRET=fb-app-secret:latest,GOOGLE_CLOUD_PRIVATE_KEY=google-cloud-private-key-whitefiber:latest'
-    id: Deploy
-
-  # Update APP_URL after deploy
-  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
-    entrypoint: bash
-    args:
-      - '-c'
-      - |
-        SERVICE_URL=$$(gcloud run services describe ${_SERVICE} --region ${_REGION} --format='value(status.url)')
-        gcloud run services update ${_SERVICE} --region ${_REGION} \
-          --set-env-vars APP_URL="$$SERVICE_URL",STRIPE_PORTAL_RETURN_URL="$$SERVICE_URL/billing"
-    id: Set-URLs
+      - '--all-tags'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}'
+    id: Push
 
 images:
   - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${SHORT_SHA}'
   - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:latest'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${BRANCH_NAME}-latest'
 
 substitutions:
   _REGION: us-central1
   _REPO: web
   _SERVICE: ai-dashboardatest
-  _MAX_INSTANCES: '5'
-  _NEXT_PUBLIC_SUPABASE_URL: https://mnynkgjczivchkuyvrzg.supabase.co
-  _NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ueW5rZ2pjeml2Y2hrdXl2cnpnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAyNDU1MDksImV4cCI6MjA3NTgyMTUwOX0.y0ucwGYZ4LfmgoXHI5LRz6maM3wfvt3Kv2eMelukjf8
-  _STRIPE_PRICE_MONTHLY: price_1SHkl01wyNtYCNj0g3uwntLM
-  _STRIPE_PRICE_QUARTERLY: price_1SHmBt1wyNtYCNj07QyC6kt0
-  _STRIPE_PRICE_YEARLY: price_1SHmBt1wyNtYCNj0hknuap7E
-  _FB_APP_ID: '1097372248818215'
-  _FB_WEBHOOK_VERIFY_TOKEN: '123'
-  _GOOGLE_CLOUD_PROJECT_ID: white-fiber-470711-s7
-  _GOOGLE_CLOUD_LOCATION: us-central1
-  _GOOGLE_CLOUD_CLIENT_EMAIL: 767431721427-compute@developer.gserviceaccount.com
+  # Note: _NEXT_PUBLIC_* vars should be set in Cloud Build trigger UI
+  # to keep them out of the repo (even though they're public in browser)
 
 options:
   logging: CLOUD_LOGGING_ONLY

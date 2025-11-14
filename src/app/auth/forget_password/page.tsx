@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import AuthCard from "@/components/auth-card";
 import TextField from "@/components/ui/text-field";
 import Button from "@/components/ui/button";
@@ -11,9 +12,14 @@ import LoadingScreen from "@/components/loading-screen";
 import { toast } from "react-toastify";
 import BrandLogo from "@/components/ui/brand-logo";
 
+export const dynamic = "force-dynamic";
+
 export default function ForgetPasswordPage() {
   const router = useRouter();
-  const supabase = React.useMemo(() => createSupabaseBrowserClient(), []);
+  const supabase = React.useMemo<SupabaseClient | null>(() => {
+    if (typeof window === "undefined") return null;
+    return createSupabaseBrowserClient();
+  }, []);
   const [checkingSession, setCheckingSession] = React.useState(true);
   const [email, setEmail] = React.useState("");
   const [selectedLang, setSelectedLang] = React.useState<"EN" | "KM">("EN");
@@ -21,6 +27,7 @@ export default function ForgetPasswordPage() {
   const [emailError, setEmailError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
+    if (!supabase) return;
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
         router.replace("/dashboard");
@@ -28,7 +35,7 @@ export default function ForgetPasswordPage() {
         setCheckingSession(false);
       }
     });
-  }, []);
+  }, [supabase, router]);
 
   const validateEmail = React.useCallback((value: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -36,6 +43,7 @@ export default function ForgetPasswordPage() {
   }, []);
 
   const onSubmit = React.useCallback(async () => {
+    if (!supabase) return;
     const err = validateEmail(email);
     setEmailError(err);
     if (err) return;

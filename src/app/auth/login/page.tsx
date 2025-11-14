@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import React, { useEffect, useState } from "react";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import AuthCard from "@/components/auth-card";
 import LanguageSwitcher from "@/components/language-switcher";
 import TextField from "@/components/ui/text-field";
@@ -12,6 +13,8 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import LoadingScreen from "@/components/loading-screen";
 import { toast } from "react-toastify";
 
+export const dynamic = "force-dynamic";
+
 export default function Page() {
   const [selectedLang, setSelectedLang] = useState<"EN" | "KM">("EN");
   const [phoneOrEmail, setPhoneOrEmail] = useState("");
@@ -20,10 +23,14 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
   const router = useRouter();
-  const supabase = createSupabaseBrowserClient();
+  const supabase = React.useMemo<SupabaseClient | null>(() => {
+    if (typeof window === "undefined") return null;
+    return createSupabaseBrowserClient();
+  }, []);
 
   useEffect(() => {
     // Gate: show loading while checking session, to avoid flashing the login form
+    if (!supabase) return;
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
         router.replace("/dashboard");
@@ -38,9 +45,10 @@ export default function Page() {
     return () => {
       sub.subscription.unsubscribe();
     };
-  }, []);
+  }, [supabase, router]);
 
   const handleLogin = async () => {
+    if (!supabase) return;
     setError(null);
     setLoading(true);
     try {
