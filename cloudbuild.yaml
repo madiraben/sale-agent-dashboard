@@ -56,9 +56,9 @@ steps:
     args:
       - '-c'
       - |
-        SERVICE_URL=$(gcloud run services describe ${_SERVICE} --region ${_REGION} --format='value(status.url)')
+        SERVICE_URL=$$(gcloud run services describe ${_SERVICE} --region ${_REGION} --format='value(status.url)')
         gcloud run services update ${_SERVICE} --region ${_REGION} \
-          --set-env-vars APP_URL="$SERVICE_URL",STRIPE_PORTAL_RETURN_URL="$SERVICE_URL/billing"
+          --set-env-vars APP_URL="$$SERVICE_URL",STRIPE_PORTAL_RETURN_URL="$$SERVICE_URL/billing"
     id: Set-URLs
 
 images:
