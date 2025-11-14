@@ -220,6 +220,7 @@ export async function handleCollectingContactStage(
         name: updatedContact.name!,
         email: updatedContact.email || null,
         phone: updatedContact.phone || null,
+        address: updatedContact.address || null,
       },
       cart: session.cart,
       messengerSenderId: session.external_user_id, // Link order to Messenger sender

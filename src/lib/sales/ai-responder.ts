@@ -16,6 +16,7 @@ export type ResponseContext = {
     address?: string;
   };
   systemContext?: string; // Additional context like "product added", "order created", etc.
+  customPrompt?: string; // Custom bot prompt template from database
 };
 
 /**
@@ -28,7 +29,7 @@ export async function generateAIResponse(context: ResponseContext): Promise<stri
     const language = isKhmer ? "Khmer" : "English";
 
     // Build system prompt based on stage
-    const systemPrompt = buildSystemPrompt(context, language);
+    const systemPrompt = buildSystemPrompt(context, language, context.customPrompt);
 
     // Build conversation context
     const messages: Array<{ role: string; content: string }> = [
@@ -81,11 +82,11 @@ export async function generateAIResponse(context: ResponseContext): Promise<stri
 /**
  * Build stage-specific system prompts
  */
-function buildSystemPrompt(context: ResponseContext, language: string): string {
-  const basePersonality = `You are a friendly, helpful e-commerce sales assistant. 
+function buildSystemPrompt(context: ResponseContext, language: string, customPrompt?: string): string {
+  // Use custom prompt if provided, otherwise use default
+  const basePersonality = customPrompt || `You are a friendly, helpful e-commerce sales assistant. 
 Your personality:
 - Warm and conversational, not robotic
-- Use emojis sparingly and naturally
 - Keep responses concise but complete
 - Be enthusiastic about helping customers shop
 - ALWAYS respond in ${language} language
@@ -96,6 +97,9 @@ CRITICAL RULES:
 - ONLY show products that are explicitly provided in the context
 - If no products are provided, do NOT create fake product names or prices
 - You can only work with real data from the database`;
+
+  // Add language instruction to custom prompts
+  const languageInstruction = customPrompt ? `\n\nIMPORTANT: ALWAYS respond in ${language} language.${language === "Khmer" ? " Use natural Khmer expressions and be culturally appropriate." : ""}` : "";
 
   let stageInstructions = "";
 
@@ -177,7 +181,7 @@ Guidelines:
       stageInstructions = "Help the customer with their shopping needs.";
   }
 
-  return `${basePersonality}
+  return `${basePersonality}${languageInstruction}
 
 ${stageInstructions}
 

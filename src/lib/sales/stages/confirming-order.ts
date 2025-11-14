@@ -58,6 +58,7 @@ export async function handleConfirmingOrderStage(
             name: session.contact.name!,
             email: session.contact.email || null,
             phone: session.contact.phone || null,
+            address: session.contact.address || null,
           },
           cart: session.cart,
           messengerSenderId: session.external_user_id, // Link order to Messenger sender

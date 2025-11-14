@@ -43,12 +43,18 @@ export default function Sidebar({ items, className = "" }: SidebarProps) {
   }, [pathname, items]);
 
   return (
-    <aside className={`flex h-dvh w-64 flex-col bg-[#0b213f] ${className}`}>
-      <div className="flex h-[72px] items-center gap-3 px-5">
+    <aside className={`flex min-h-screen w-64 flex-col bg-[#0b213f] ${className}`}>
+      <div className="flex h-[72px] items-center gap-3 px-5 shrink-0">
         <Image src="/images/logo/logo2.png" alt="logo" width={42} height={42} />
         <div className="text-lg font-semibold text-white">SALE AGENCY</div>
       </div>
-      <nav className="mt-3 flex-1 space-y-2 px-4">
+      <nav 
+        className="mt-3 flex-1 space-y-2 px-4 pb-4"
+        style={{
+          scrollbarWidth: 'thin',
+          scrollbarColor: 'rgba(255, 255, 255, 0.2) transparent'
+        }}
+      >
         {items.map((item, idx) => {
           const hasChildren = Array.isArray(item.children) && item.children.length > 0;
           const parentActive = pathname.startsWith(item.href);
@@ -109,7 +115,7 @@ export default function Sidebar({ items, className = "" }: SidebarProps) {
           );
         })}
       </nav>
-      <div className="mt-auto border-t border-white/10 p-5 text-sm text-white/50">v0.1.0</div>
+      <div className="shrink-0 border-t border-white/10 p-5 text-sm text-white/50">v0.1.0</div>
     </aside>
   );
 }

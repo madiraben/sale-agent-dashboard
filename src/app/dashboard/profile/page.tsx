@@ -9,6 +9,7 @@ import ConfirmDialog from "@/components/ui/confirm-dialog";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import LoadingScreen from "@/components/loading-screen";
+import { toast } from "react-toastify";
 
 export default function Profile() {
   const supabase = React.useMemo(() => createSupabaseBrowserClient(), []);
@@ -123,9 +124,15 @@ export default function Profile() {
         body: JSON.stringify({ bot_token: tgToken }),
       });
       if (res.ok) {
+        toast.success("Telegram bot connected successfully!");
         setTgToken("");
         await refreshTg();
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        toast.error(errorData.error || "Failed to connect Telegram bot. Please check your token.");
       }
+    } catch (error) {
+      toast.error("An error occurred while connecting Telegram bot.");
     } finally {
       setTgBusy(false);
     }
@@ -135,8 +142,16 @@ export default function Profile() {
     if (tgBusy) return;
     setTgBusy(true);
     try {
-      await fetch("/api/telegram/connected", { method: "DELETE" });
-      await refreshTg();
+      const res = await fetch("/api/telegram/connected", { method: "DELETE" });
+      if (res.ok) {
+        toast.success("Telegram bot disconnected successfully!");
+        await refreshTg();
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        toast.error(errorData.error || "Failed to disconnect Telegram bot.");
+      }
+    } catch (error) {
+      toast.error("An error occurred while disconnecting Telegram bot.");
     } finally {
       setTgBusy(false);
     }
@@ -231,111 +246,118 @@ export default function Profile() {
     // fb: {id, name, profile?: {id, name, picture, email} }
     if (!fb?.id && !fb?.profile && !(Array.isArray(fb?.pages) && fb.pages.length > 0)) {
       return (
-        <div className="rounded-md border px-3 py-2 text-sm text-gray-800">
-          Not connected yet
+        <div className="bg-white rounded-lg p-4 border border-blue-200 shadow-sm text-center">
+          <svg className="w-10 h-10 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <div className="text-sm text-gray-600">Not connected yet</div>
+          <div className="text-xs text-gray-500 mt-1">Click Connect to get started</div>
         </div>
       );
     }
     return (
-      <div className="space-y-2">
-        {fb?.profile ? (
-          <div className="flex items-center gap-3 border-b pb-2 mb-2">
+      <div className="bg-white rounded-lg border border-blue-200 shadow-sm overflow-hidden">
+        {fb?.profile && (
+          <div className="flex items-center gap-3 bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 border-b border-blue-200">
             {fb.profile.picture ? (
               <img
                 src={fb.profile.picture}
                 alt="Profile"
-                className="w-8 h-8 rounded-full ring-1 ring-gray-300"
+                className="w-10 h-10 rounded-full ring-2 ring-white shadow"
               />
             ) : (
-              <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 text-xs font-medium">
+              <div className="w-10 h-10 rounded-full bg-blue-200 flex items-center justify-center text-blue-800 text-sm font-semibold shadow">
                 {fb.profile.name?.charAt(0).toUpperCase() ?? "?"}
               </div>
             )}
             <div>
-              <div className="font-semibold text-gray-800">{fb.profile.name || "Facebook User"}</div>
-              {fb.profile.email ? (
-                <div className="text-xs text-gray-500">{fb.profile.email}</div>
-              ) : null}
+              <div className="font-semibold text-gray-900">{fb.profile.name || "Facebook User"}</div>
+              {fb.profile.email && (
+                <div className="text-xs text-gray-600">{fb.profile.email}</div>
+              )}
             </div>
           </div>
-        ) : null}
-        {Array.isArray((fb as any)?.active_pages) && (fb as any).active_pages.length > 0 ? (
-          <div>
-            <span className="block text-xs text-gray-500 mb-1">Active Pages</span>
+        )}
+        
+        {Array.isArray((fb as any)?.active_pages) && (fb as any).active_pages.length > 0 && (
+          <div className="px-4 py-3 border-b border-blue-100">
+            <span className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Active Pages</span>
             <div className="flex flex-col gap-2">
               {(fb as any).active_pages.map((ap: any) => (
-                <div key={ap.id} className="flex items-center gap-3">
+                <div key={ap.id} className="flex items-center gap-3 bg-blue-50 rounded-lg px-3 py-2">
                   {ap.picture ? (
-                    <img src={ap.picture} alt="Page" className="w-8 h-8 rounded-full ring-1 ring-gray-300" />
+                    <img src={ap.picture} alt="Page" className="w-8 h-8 rounded-full ring-1 ring-blue-300 shadow-sm" />
                   ) : (
-                    <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 text-xs font-medium">
+                    <div className="w-8 h-8 rounded-full bg-blue-200 flex items-center justify-center text-blue-800 text-xs font-semibold shadow-sm">
                       {(ap.name || ap.id || "?").toString().charAt(0).toUpperCase()}
                     </div>
                   )}
-                  <span>{ap.name || ap.id}</span>
+                  <span className="font-medium text-gray-900">{ap.name || ap.id}</span>
                 </div>
               ))}
             </div>
           </div>
-        ) : (
-          fb?.id ? (
-            <div>
-              <span className="block text-xs text-gray-500 mb-1">Active Page</span>
-              <div className="flex items-center gap-3">
-                {fb && (fb as any).page_picture ? (
-                  <img
-                    src={(fb as any).page_picture as string}
-                    alt="Page"
-                    className="w-8 h-8 rounded-full ring-1 ring-gray-300"
-                  />
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 text-xs font-medium">
-                    {(fb?.name || fb?.id || "?").toString().charAt(0).toUpperCase()}
-                  </div>
-                )}
-                <span>{fb?.name || fb?.id}</span>
-              </div>
-            </div>
-          ) : null
         )}
 
-        {Array.isArray(fb?.pages) ? (
-          <div className="pt-2 border-t mt-2">
-            <span className="block text-xs text-gray-500 mb-1">Connected Pages</span>
-            <div className="space-y-2">
-              {fb.pages.length === 0 ? (
-                <div className="text-sm text-gray-600">No connected pages</div>
+        {!Array.isArray((fb as any)?.active_pages) && fb?.id && (
+          <div className="px-4 py-3 border-b border-blue-100">
+            <span className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Active Page</span>
+            <div className="flex items-center gap-3 bg-blue-50 rounded-lg px-3 py-2">
+              {fb && (fb as any).page_picture ? (
+                <img
+                  src={(fb as any).page_picture as string}
+                  alt="Page"
+                  className="w-8 h-8 rounded-full ring-1 ring-blue-300 shadow-sm"
+                />
               ) : (
-                fb.pages.map((p: any) => (
-                  <div key={p.id} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4"
-                        checked={!!p.is_active}
-                        onChange={(e) => toggleActive(p.id, e.target.checked)}
-                        disabled={fbBusy}
-                      />
-                      <span className="text-gray-900">{p.name || p.id}</span>
-                      {p.is_active ? <Badge variant="success">Active</Badge> : null}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" className="text-rose-600 border-rose-200 hover:bg-rose-50" onClick={() => removePage(p.id)} disabled={fbBusy}>Remove</Button>
-                    </div>
-                  </div>
-                ))
+                <div className="w-8 h-8 rounded-full bg-blue-200 flex items-center justify-center text-blue-800 text-xs font-semibold shadow-sm">
+                  {(fb?.name || fb?.id || "?").toString().charAt(0).toUpperCase()}
+                </div>
               )}
+              <span className="font-medium text-gray-900">{fb?.name || fb?.id}</span>
             </div>
           </div>
-        ) : null}
+        )}
 
-        <div className="pt-2 border-t mt-2">
-          <span className="block text-xs text-gray-500 mb-1">Connect another page</span>
+        {Array.isArray(fb?.pages) && fb.pages.length > 0 && (
+          <div className="px-4 py-3 border-b border-blue-100">
+            <span className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Manage Pages</span>
+            <div className="space-y-2">
+              {fb.pages.map((p: any) => (
+                <div key={p.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2.5">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500"
+                      checked={!!p.is_active}
+                      onChange={(e) => toggleActive(p.id, e.target.checked)}
+                      disabled={fbBusy}
+                    />
+                    <span className="text-sm font-medium text-gray-900">{p.name || p.id}</span>
+                    {p.is_active && <Badge variant="success">Active</Badge>}
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    className="text-rose-600 border-rose-200 hover:bg-rose-50 text-xs py-1 px-2" 
+                    onClick={() => removePage(p.id)} 
+                    disabled={fbBusy}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="px-4 py-3 bg-gray-50">
+          <span className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Add Another Page</span>
           <div className="flex items-center gap-2">
             <select
-              className="border rounded-md px-2 py-1 text-sm"
+              className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               value={selectedPageId}
               onChange={(e) => setSelectedPageId(e.target.value)}
+              disabled={fbBusy}
             >
               <option value="">Select a page...</option>
               {availablePages
@@ -344,7 +366,14 @@ export default function Profile() {
                   <option key={p.id} value={p.id}>{p.name || p.id}</option>
                 ))}
             </select>
-            <Button variant="outline" onClick={() => connectPage(selectedPageId)} disabled={!selectedPageId || fbBusy}>Connect</Button>
+            <Button 
+              variant="outline" 
+              className="bg-white shadow-sm" 
+              onClick={() => connectPage(selectedPageId)} 
+              disabled={!selectedPageId || fbBusy}
+            >
+              {fbBusy ? "Adding..." : "Add"}
+            </Button>
           </div>
         </div>
       </div>
@@ -352,147 +381,303 @@ export default function Profile() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-sm text-gray-600">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M12 1v3M12 20v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M1 12h3M20 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" />
-          </svg>
-          <span className="font-medium text-gray-900">Profile</span>
-        </div>
+    <div className="space-y-6 max-w-7xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
-          <Button
-            variant="outline"
-            className="border-rose-200 text-rose-600 hover:bg-rose-50"
-            onClick={() => setShowLogoutConfirm(true)}
-          >
-            Log out
-          </Button>
+          <h1 className="text-2xl font-bold text-gray-900">Profile Settings</h1>
+          <p className="text-sm text-gray-500 mt-1">Manage your account and integrations</p>
         </div>
+        <Button
+          variant="outline"
+          className="border-rose-200 text-rose-600 hover:bg-rose-50"
+          onClick={() => setShowLogoutConfirm(true)}
+        >
+          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+          Log out
+        </Button>
       </div>
 
       {loading ? (
         <LoadingScreen />
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-            <Card className="lg:col-span-2">
-              <div className="mb-4 flex items-center justify-between">
-                <div className="text-base font-semibold text-gray-900">Account</div>
-              </div>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-1">
+          {/* Account & Integrations Section */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Main Content */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Account Info Card */}
+              <Card>
+                <div className="border-b pb-4 mb-6">
+                  <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                    Account Information
+                  </h2>
+                </div>
                 <div>
-                  <div className="flex items-center justify-between">
-                    <label className="mb-2 block text-sm text-gray-700">Email</label>
-                  </div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
                   <TextField type="email" value={email} disabled />
                 </div>
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <div className="text-sm text-gray-700">Facebook</div>
-                    <div className="flex items-center gap-2">
-                      <a href="/api/facebook/oauth/start">
-                        <Button variant="outline">{fb?.id ? "Change" : "Connect"}</Button>
-                      </a>
-                      {fb?.id ? (
-                        <Button
-                          variant="outline"
-                          className="text-rose-600 border-rose-200 hover:bg-rose-50"
-                          onClick={disconnectFacebook}
-                          disabled={fbBusy}
-                        >
-                          Disconnect
-                        </Button>
-                      ) : null}
-                    </div>
-                  </div>
-                  <FacebookProfileSection />
-                </div>
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <div className="text-sm text-gray-700">Telegram</div>
-                  </div>
-                  {tg ? (
-                    <div className="flex items-center justify-between rounded-md border px-3 py-2">
-                      <div className="text-sm text-gray-800">@{tg.username || tg.id}</div>
-                      <Button variant="outline" className="text-rose-600 border-rose-200 hover:bg-rose-50" onClick={disconnectTelegram} disabled={tgBusy}>
-                        Disconnect
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <TextField placeholder="Enter Telegram Bot Token" value={tgToken} onChange={(e) => setTgToken(e.target.value)} />
-                      <Button variant="outline" onClick={connectTelegram} disabled={!tgToken || tgBusy}>Connect</Button>
-                    </div>
-                  )}
-                  <div className="mt-2 text-xs text-gray-500">
-                    Paste your BotFather token to enable the Telegram bot with RAG.
-                  </div>
-                </div>
-              </div>
-            </Card>
+              </Card>
 
-            <Card>
-              <div className="mb-4 text-base font-semibold text-gray-900">Subscription</div>
-              <div className="space-y-3 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-700">Status</span>
-                  <Badge variant={billing?.active ? "success" : "warning"}>{billing?.active ? "Active" : "Inactive"}</Badge>
+              {/* Social Integrations Card */}
+              <Card>
+                <div className="border-b pb-4 mb-6">
+                  <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                    Social Integrations
+                  </h2>
+                  <p className="text-sm text-gray-500 mt-1">Connect your social media accounts to enable bot features</p>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-700">Plan</span>
-                  <Badge variant="muted">{getPlanLabel(billing?.plan)}</Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-700">Renews</span>
-                  <span className="text-gray-900">{formatDate(billing?.renew)}</span>
-                </div>
-              </div>
-              <div className="mt-4 flex justify-end">
-                <Button onClick={openPortal} disabled={portalLoading}>{portalLoading ? "Opening..." : "Manage Billing"}</Button>
-              </div>
-            </Card>
-          </div>
 
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-            <Card className="lg:col-span-2">
-              <div className="mb-4 text-base font-semibold text-gray-900">Workspaces</div>
-              <div className="rounded-lg border">
-                <table className="w-full text-left text-sm">
-                  <thead className="border-b bg-gray-50 text-gray-600">
-                    <tr>
-                      <th className="px-3 py-2">Name</th>
-                      <th className="px-3 py-2">Role</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tenants.map((t) => (
-                      <tr key={t.id} className="border-t">
-                        <td className="px-3 py-2">{t.name ?? t.id}</td>
-                        <td className="px-3 py-2 capitalize">
-                          <Badge variant={t.role === "owner" ? "success" : t.role === "admin" ? "default" : "muted"}>{t.role}</Badge>
-                        </td>
+                <div className="space-y-6">
+                  {/* Facebook Integration */}
+                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center shadow-md">
+                          <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                          </svg>
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-gray-900 text-base">Facebook Messenger</h3>
+                          <p className="text-sm text-gray-600">Connect your Facebook pages</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <a href="/api/facebook/oauth/start">
+                          <Button variant="outline" className="bg-white shadow-sm">
+                            {fb?.id ? (
+                              <><svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                              </svg>Reconnect</>
+                            ) : (
+                              <><svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                              </svg>Connect</>
+                            )}
+                          </Button>
+                        </a>
+                        {fb?.id && (
+                          <Button
+                            variant="outline"
+                            className="text-rose-600 border-rose-200 hover:bg-rose-50 bg-white shadow-sm"
+                            onClick={disconnectFacebook}
+                            disabled={fbBusy}
+                          >
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            Disconnect
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    <FacebookProfileSection />
+                  </div>
+
+                  {/* Telegram Integration */}
+                  <div className="bg-gradient-to-br from-cyan-50 to-blue-50 rounded-xl p-6 border border-cyan-100">
+                    <div className="flex items-start gap-3 mb-4">
+                      <div className="w-12 h-12 bg-gradient-to-br from-cyan-500 to-blue-500 rounded-xl flex items-center justify-center shadow-md">
+                        <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-gray-900 text-base">Telegram Bot</h3>
+                        <p className="text-sm text-gray-600">Enable RAG-powered bot for Telegram</p>
+                      </div>
+                    </div>
+                    
+                    {tg ? (
+                      <div className="bg-white rounded-lg p-4 border border-cyan-200 shadow-sm">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-gradient-to-br from-cyan-100 to-blue-100 rounded-full flex items-center justify-center">
+                              <svg className="w-5 h-5 text-cyan-600" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/>
+                              </svg>
+                            </div>
+                            <div>
+                              <div className="font-medium text-gray-900">@{tg.username || tg.id}</div>
+                              <div className="text-xs text-gray-500">Connected bot</div>
+                            </div>
+                          </div>
+                          <Button 
+                            variant="outline" 
+                            className="text-rose-600 border-rose-200 hover:bg-rose-50 bg-white shadow-sm" 
+                            onClick={disconnectTelegram} 
+                            disabled={tgBusy}
+                          >
+                            {tgBusy ? (
+                              <><svg className="w-4 h-4 mr-2 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>Disconnecting...</>
+                            ) : (
+                              <><svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>Disconnect</>
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-white rounded-lg p-4 border border-cyan-200 shadow-sm">
+                        <div className="space-y-3">
+                          <TextField 
+                            placeholder="Paste your BotFather token here..." 
+                            value={tgToken} 
+                            onChange={(e) => setTgToken(e.target.value)} 
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && tgToken && !tgBusy) {
+                                connectTelegram();
+                              }
+                            }}
+                            disabled={tgBusy}
+                            className="font-mono text-sm"
+                          />
+                          <div className="flex items-center justify-between">
+                            <div className="text-xs text-gray-500 flex items-center gap-1">
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              Get your token from @BotFather on Telegram
+                            </div>
+                            <Button 
+                              onClick={connectTelegram} 
+                              disabled={!tgToken || tgBusy}
+                              className="shadow-sm"
+                            >
+                              {tgBusy ? (
+                                <><svg className="w-4 h-4 mr-2 animate-spin" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>Connecting...</>
+                              ) : (
+                                <><svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                </svg>Connect Bot</>
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Card>
+
+              {/* Workspaces Card */}
+              <Card>
+                <div className="border-b pb-4 mb-6">
+                  <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                    </svg>
+                    Workspaces
+                  </h2>
+                </div>
+                <div className="rounded-lg border overflow-hidden">
+                  <table className="w-full text-left text-sm">
+                    <thead className="border-b bg-gray-50 text-gray-600">
+                      <tr>
+                        <th className="px-4 py-3 font-medium">Name</th>
+                        <th className="px-4 py-3 font-medium">Role</th>
                       </tr>
-                    ))}
-                    {tenants.length === 0 ? (
-                      <tr><td colSpan={2} className="px-3 py-4 text-center text-gray-500">No workspaces</td></tr>
-                    ) : null}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
+                    </thead>
+                    <tbody className="divide-y">
+                      {tenants.map((t) => (
+                        <tr key={t.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-4 py-3 font-medium text-gray-900">{t.name ?? t.id}</td>
+                          <td className="px-4 py-3">
+                            <Badge variant={t.role === "owner" ? "success" : t.role === "admin" ? "default" : "muted"}>{t.role}</Badge>
+                          </td>
+                        </tr>
+                      ))}
+                      {tenants.length === 0 && (
+                        <tr><td colSpan={2} className="px-4 py-8 text-center text-gray-500">No workspaces</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </div>
 
-            <Card>
-              <div className="mb-4 text-base font-semibold text-gray-900">Payment Method</div>
-              {card ? (
-                <div className="text-sm text-gray-700">{card.brand.toUpperCase()} •••• {card.last4} — exp {String(card.exp_month).padStart(2, '0')}/{card.exp_year}</div>
-              ) : (
-                <div className="text-sm text-gray-700">No card on file</div>
-              )}
-              <div className="mt-4 flex justify-end">
-                <Button variant="outline" onClick={openPortal} disabled={portalLoading}>{portalLoading ? "Opening..." : "Update Card"}</Button>
-              </div>
-            </Card>
+            {/* Sidebar */}
+            <div className="space-y-6">
+              {/* Subscription Card */}
+              <Card>
+                <div className="border-b pb-4 mb-6">
+                  <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    Subscription
+                  </h2>
+                </div>
+                <div className="space-y-4">
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm text-gray-600">Status</span>
+                      <Badge variant={billing?.active ? "success" : "warning"}>
+                        {billing?.active ? "Active" : "Inactive"}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Plan</span>
+                    <Badge variant="muted" className="font-medium">{getPlanLabel(billing?.plan)}</Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Renews</span>
+                    <span className="text-sm font-medium text-gray-900">{formatDate(billing?.renew)}</span>
+                  </div>
+                </div>
+                <div className="mt-6 pt-6 border-t">
+                  <Button onClick={openPortal} disabled={portalLoading} className="w-full shadow-sm">
+                    {portalLoading ? "Opening..." : "Manage Billing"}
+                  </Button>
+                </div>
+              </Card>
+
+              {/* Payment Method Card */}
+              <Card>
+                <div className="border-b pb-4 mb-6">
+                  <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                    </svg>
+                    Payment Method
+                  </h2>
+                </div>
+                {card ? (
+                  <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-lg p-4 text-white shadow-lg mb-4">
+                    <div className="text-xs uppercase tracking-wider opacity-70 mb-2">Card on file</div>
+                    <div className="text-lg font-semibold mb-1">{card.brand.toUpperCase()} •••• {card.last4}</div>
+                    <div className="text-sm opacity-70">Expires {String(card.exp_month).padStart(2, '0')}/{card.exp_year}</div>
+                  </div>
+                ) : (
+                  <div className="text-center py-6 border-2 border-dashed rounded-lg mb-4">
+                    <svg className="w-8 h-8 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                    </svg>
+                    <div className="text-sm text-gray-500">No card on file</div>
+                  </div>
+                )}
+                <Button variant="outline" onClick={openPortal} disabled={portalLoading} className="w-full shadow-sm">
+                  {portalLoading ? "Opening..." : card ? "Update Card" : "Add Card"}
+                </Button>
+              </Card>
+            </div>
           </div>
         </>
       )}

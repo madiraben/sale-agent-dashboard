@@ -25,6 +25,7 @@ async function findOrCreateCustomer(
   name: string,
   email?: string | null,
   phone?: string | null,
+  address?: string | null,
   messengerSenderId?: string | null
 ): Promise<string> {
   const admin = createSupabaseAdminClient();
@@ -46,6 +47,7 @@ async function findOrCreateCustomer(
           name, 
           email: email || null, 
           phone: phone || null,
+          address: address || null,
           updated_at: new Date().toISOString() 
         })
         .eq("id", data.id);
@@ -71,7 +73,7 @@ async function findOrCreateCustomer(
 
     if (data?.id) {
       // Link Messenger ID to existing customer
-      const updateData: any = { phone, name, updated_at: new Date().toISOString() };
+      const updateData: any = { phone, name, address: address || null, updated_at: new Date().toISOString() };
       if (messengerSenderId) {
         updateData.messenger_sender_id = messengerSenderId;
       }
@@ -97,7 +99,7 @@ async function findOrCreateCustomer(
 
     if (data?.id) {
       // Link Messenger ID to existing customer
-      const updateData: any = { email, name, updated_at: new Date().toISOString() };
+      const updateData: any = { email, name, address: address || null, updated_at: new Date().toISOString() };
       if (messengerSenderId) {
         updateData.messenger_sender_id = messengerSenderId;
       }
@@ -121,6 +123,7 @@ async function findOrCreateCustomer(
       name: name.trim() || "Guest",
       email: email || null,
       phone: phone || null,
+      address: address || null,
       messenger_sender_id: messengerSenderId || null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -232,6 +235,7 @@ export async function createPendingOrder(req: OrderRequest): Promise<OrderResult
     req.contact.name,
     req.contact.email,
     req.contact.phone,
+    req.contact.address,
     req.messengerSenderId
   );
 

@@ -5,166 +5,761 @@ import Card from "@/components/ui/card";
 import TextField from "@/components/ui/text-field";
 import TextArea from "@/components/ui/text-area";
 import PasswordField from "@/components/ui/password-field";
-import ImageUploader from "@/components/ui/image-uploader";
-import LanguageSwitcher from "@/components/language-switcher";
 import Button from "@/components/ui/button";
+import ConfirmDialog from "@/components/ui/confirm-dialog";
+import LoadingScreen from "@/components/loading-screen";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { toast } from "react-toastify";
+
+type BotPersonality = "friendly" | "professional" | "casual";
 
 export default function Setting() {
-  const [name, setName] = React.useState("");
+  const supabase = React.useMemo(() => createSupabaseBrowserClient(), []);
+  const [loading, setLoading] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
+
+  // User Profile
+  const [userId, setUserId] = React.useState<string>("");
   const [email, setEmail] = React.useState("");
-  const [bio, setBio] = React.useState("");
-  const [avatar, setAvatar] = React.useState<File | null>(null);
-  const [language, setLanguage] = React.useState<"EN" | "KM">("EN");
-  const [password, setPassword] = React.useState("");
+  const [tenantId, setTenantId] = React.useState<string>("");
+  
+  // Password
+  const [currentPassword, setCurrentPassword] = React.useState("");
   const [newPassword, setNewPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
+  const [changingPassword, setChangingPassword] = React.useState(false);
+
+  // Bot Settings
+  const [botPersonality, setBotPersonality] = React.useState<BotPersonality>("friendly");
+  const [welcomeMessage, setWelcomeMessage] = React.useState("");
+  const [awayMessage, setAwayMessage] = React.useState("");
+  const [fallbackMessage, setFallbackMessage] = React.useState("");
+  const [promptTemplate, setPromptTemplate] = React.useState("");
+  const [enableAutoResponse, setEnableAutoResponse] = React.useState(true);
+  const [enableRag, setEnableRag] = React.useState(true);
+  
+  // Bot Memory
   const [clearingMemory, setClearingMemory] = React.useState(false);
-  const [memoryMessage, setMemoryMessage] = React.useState<string | null>(null);
+  const [showClearMemoryConfirm, setShowClearMemoryConfirm] = React.useState(false);
 
-  function handleSaveProfile() {
-      // TODO: integrate with API
-    console.log({ name, email, bio, avatar });
-  }
+  // Accordion state
+  const [expandedSection, setExpandedSection] = React.useState<string | null>(null);
 
-  function handleSavePreferences() {
-    // TODO: integrate with API
-    console.log({ language });
-  }
+  const toggleSection = (section: string) => {
+    setExpandedSection(expandedSection === section ? null : section);
+  };
 
-  function handleChangePassword() {
-    // TODO: integrate with API
-    if (newPassword !== confirmPassword) return;
-    console.log({ password, newPassword });
-    setPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
-  }
+  // Load user and bot settings
+  React.useEffect(() => {
+    let cancelled = false;
+    
+    async function loadSettings() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user || cancelled) return;
 
-  async function handleClearBotMemory() {
-    if (!confirm("Are you sure you want to clear all bot chat memory? This will delete all conversation history and customer sessions. This action cannot be undone.")) {
+        setUserId(user.id);
+        setEmail(user.email || "");
+
+        // Get user's tenant
+        const { data: userTenant } = await supabase
+          .from("user_tenants")
+          .select("tenant_id")
+          .eq("user_id", user.id)
+          .limit(1)
+          .single();
+
+        if (!userTenant || cancelled) {
+          setLoading(false);
+          return;
+        }
+
+        setTenantId(userTenant.tenant_id);
+
+        // Load bot settings from database
+        const { data: settings } = await supabase
+          .from("tenant_settings")
+          .select("*")
+          .eq("tenant_id", userTenant.tenant_id)
+          .limit(1)
+          .single();
+
+        if (settings && !cancelled) {
+          const personality = settings.bot_personality || "friendly";
+          setBotPersonality(personality);
+          setWelcomeMessage(settings.welcome_message || "");
+          setAwayMessage(settings.away_message || "");
+          setFallbackMessage(settings.fallback_message || "");
+          setPromptTemplate(settings.prompt_template || getDefaultPrompt(personality));
+          setEnableAutoResponse(settings.enable_auto_response ?? true);
+          setEnableRag(settings.enable_rag ?? true);
+        } else if (!settings && !cancelled) {
+          // No settings found, use defaults
+          setPromptTemplate(getDefaultPrompt("friendly"));
+        }
+      } catch (error) {
+        console.error("Error loading settings:", error);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    loadSettings();
+    return () => { cancelled = true; };
+  }, [supabase]);
+
+  async function handleChangePassword() {
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      toast.error("Please fill in all password fields");
       return;
     }
 
+    if (newPassword !== confirmPassword) {
+      toast.error("New passwords do not match");
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      toast.error("Password must be at least 6 characters long");
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+
+      if (error) throw error;
+
+      toast.success("Password changed successfully!");
+      setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to change password");
+    } finally {
+      setChangingPassword(false);
+    }
+  }
+
+  async function handleSaveBotSettings() {
+    if (!tenantId) {
+      toast.error("Tenant not found");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from("tenant_settings")
+        .upsert(
+          {
+            tenant_id: tenantId,
+            bot_personality: botPersonality,
+            welcome_message: welcomeMessage,
+            away_message: awayMessage,
+            fallback_message: fallbackMessage,
+            prompt_template: promptTemplate,
+            enable_auto_response: enableAutoResponse,
+            enable_rag: enableRag,
+            updated_at: new Date().toISOString(),
+          },
+          {
+            onConflict: "tenant_id"
+          }
+        );
+
+      if (error) throw error;
+
+      toast.success("Bot settings saved successfully!");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to save bot settings");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleClearBotMemory() {
     setClearingMemory(true);
-    setMemoryMessage(null);
+    setShowClearMemoryConfirm(false);
     
     try {
       const response = await fetch("/api/bot/clear-memory", { method: "DELETE" });
       const data = await response.json();
       
       if (response.ok) {
-        setMemoryMessage(`✅ Success! Cleared ${data.sessionsDeleted || 0} sessions and ${data.messagesDeleted || 0} messages.`);
+        toast.success(`Successfully cleared ${data.sessionsDeleted || 0} sessions and ${data.messagesDeleted || 0} messages!`);
       } else {
-        setMemoryMessage(`❌ Error: ${data.error || "Failed to clear bot memory"}`);
+        toast.error(data.error || "Failed to clear bot memory");
       }
     } catch (error: any) {
-      setMemoryMessage(`❌ Error: ${error.message || "Failed to clear bot memory"}`);
+      toast.error(error.message || "Failed to clear bot memory");
     } finally {
       setClearingMemory(false);
-      // Clear message after 5 seconds
-      setTimeout(() => setMemoryMessage(null), 5000);
     }
   }
 
+  const personalityOptions = [
+    {
+      value: "friendly" as BotPersonality,
+      label: "Friendly",
+      description: "Warm, approachable, and conversational tone",
+      emoji: "😊"
+    },
+    {
+      value: "professional" as BotPersonality,
+      label: "Professional",
+      description: "Formal, polished, and business-oriented tone",
+      emoji: "💼"
+    },
+    {
+      value: "casual" as BotPersonality,
+      label: "Casual",
+      description: "Relaxed, informal, and easy-going tone",
+      emoji: "😎"
+    }
+  ];
+
+  const defaultPromptTemplates: Record<BotPersonality, string> = {
+    friendly: `You are a friendly and helpful AI sales assistant for an online store. Your goal is to help customers find products, answer questions, and complete orders in a warm and conversational way.
+
+Guidelines:
+- Be warm, approachable, and use a conversational tone
+- Use emojis occasionally to add personality (👋 😊 🎉)
+- Show genuine interest in helping the customer
+- Be patient and understanding
+- Make shopping feel easy and enjoyable
+- Recommend products based on customer needs
+- Help customers complete their orders smoothly
+
+Remember: You represent a friendly brand that cares about customer satisfaction!`,
+
+    professional: `You are a professional AI sales assistant representing an online store. Your role is to provide accurate product information, assist with purchases, and deliver excellent customer service in a polished, business-oriented manner.
+
+Guidelines:
+- Maintain a formal and professional tone at all times
+- Provide clear, accurate, and detailed information
+- Be efficient and respect the customer's time
+- Use proper grammar and business language
+- Focus on product features and benefits
+- Guide customers through the purchase process professionally
+- Address concerns with expertise and confidence
+
+Remember: You represent a professional brand committed to quality service.`,
+
+    casual: `Hey! You're a laid-back AI sales assistant helping people shop online. Keep things chill, easy-going, and fun while helping customers find what they need and complete their orders.
+
+Guidelines:
+- Keep it relaxed and informal - like chatting with a friend
+- Use casual language and slang when appropriate
+- Don't stress the small stuff
+- Make shopping feel easy and no-pressure
+- Be helpful without being pushy
+- Keep responses short and to the point
+- Have a sense of humor when appropriate
+
+Remember: You're here to make shopping easy and enjoyable, no stress!`
+  };
+
+  function getDefaultPrompt(personality: BotPersonality): string {
+    return defaultPromptTemplates[personality];
+  }
+
+  function handlePersonalityChange(newPersonality: BotPersonality) {
+    setBotPersonality(newPersonality);
+    // Auto-fill with default prompt for this personality
+    setPromptTemplate(getDefaultPrompt(newPersonality));
+  }
+
+  function resetPromptToDefault() {
+    setPromptTemplate(getDefaultPrompt(botPersonality));
+    toast.success("Prompt reset to default template");
+  }
+
+  if (loading) {
+    return <LoadingScreen />;
+  }
+
   return (
-    <div className="space-y-6">
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-sm text-gray-600">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M12 1v3M12 20v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M1 12h3M20 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" />
-          </svg>
-          <span className="text-gray-700">Settings</span>
-          <span>›</span>
-          <span className="font-medium text-gray-900">Account</span>
+    <div className="space-y-6 max-w-7xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+          <p className="text-sm text-gray-500 mt-1">Manage your account and bot configuration</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <div className="mb-4 text-base font-semibold text-gray-900">Profile</div>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="md:row-span-2">
-              <div className="mb-2 text-sm text-gray-600">Avatar</div>
-              <ImageUploader value={avatar} onChange={setAvatar} circle size={128} />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Main Content */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Account Information Card */}
+          <Card>
+            <div className="border-b pb-4 mb-6">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                Account Information
+              </h2>
             </div>
-            <TextField label="Full name" placeholder="John Doe" value={name} onChange={(e) => setName(e.target.value)} />
-            <TextField label="Email" placeholder="john@example.com" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <div className="md:col-span-2">
-              <TextArea label="Bio" rows={4} placeholder="Tell us about yourself" value={bio} onChange={(e) => setBio(e.target.value)} />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
+              <TextField type="email" value={email} disabled />
+              <p className="mt-2 text-xs text-gray-500">Your email cannot be changed. Contact support if you need to update it.</p>
             </div>
-          </div>
-          <div className="mt-4 flex justify-end">
-            <Button onClick={handleSaveProfile}>Save profile</Button>
-          </div>
+          </Card>
+
+          {/* Bot Personality Card */}
+          <Card>
+            <button
+              onClick={() => toggleSection('personality')}
+              className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="text-left">
+                  <h2 className="text-lg font-semibold text-gray-900">Bot Personality</h2>
+                  <p className="text-sm text-gray-500">Choose how your bot communicates</p>
+                </div>
+              </div>
+              <svg
+                className={`w-5 h-5 text-gray-400 transform transition-transform ${
+                  expandedSection === 'personality' ? 'rotate-180' : ''
+                }`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            
+            {expandedSection === 'personality' && (
+              <div className="px-4 pb-4 space-y-3 border-t">
+                {personalityOptions.map((option) => (
+                  <div
+                    key={option.value}
+                    onClick={() => handlePersonalityChange(option.value)}
+                    className={`mt-3 relative flex items-start p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                      botPersonality === option.value
+                        ? "border-blue-500 bg-blue-50"
+                        : "border-gray-200 hover:border-gray-300 bg-white"
+                    }`}
+                  >
+                    <div className="flex items-center h-5">
+                      <input
+                        type="radio"
+                        checked={botPersonality === option.value}
+                        onChange={() => handlePersonalityChange(option.value)}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="ml-3 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-2xl">{option.emoji}</span>
+                        <label className="font-semibold text-gray-900 cursor-pointer">
+                          {option.label}
+                        </label>
+                      </div>
+                      <p className="text-sm text-gray-600 mt-1">{option.description}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          {/* Prompt Template Card */}
+          <Card>
+            <button
+              onClick={() => toggleSection('prompt')}
+              className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <div className="text-left">
+                  <h2 className="text-lg font-semibold text-gray-900">Bot Prompt Template</h2>
+                  <p className="text-sm text-gray-500">Customize how your bot behaves</p>
+                </div>
+              </div>
+              <svg
+                className={`w-5 h-5 text-gray-400 transform transition-transform ${
+                  expandedSection === 'prompt' ? 'rotate-180' : ''
+                }`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {expandedSection === 'prompt' && (
+              <div className="px-4 pb-4 border-t pt-4">
+                <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <div className="flex items-start gap-2">
+                    <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div className="text-sm text-blue-800">
+                      <p className="font-medium mb-1">This template defines your bot's behavior and personality</p>
+                      <p className="text-blue-700">Each personality has a default template. Feel free to customize it to match your brand!</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      System Prompt
+                    </label>
+                    <button
+                      onClick={resetPromptToDefault}
+                      className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Reset to Default
+                    </button>
+                  </div>
+                  <TextArea
+                    rows={12}
+                    placeholder="Enter your custom bot prompt template..."
+                    value={promptTemplate}
+                    onChange={(e) => setPromptTemplate(e.target.value)}
+                    className="font-mono text-sm"
+                  />
+                  <p className="mt-2 text-xs text-gray-500">
+                    💡 Tip: Include guidelines on tone, how to handle questions, product recommendations, and order processing.
+                  </p>
+                </div>
+
+                <div className="mt-4 pt-4 border-t bg-gray-50 -mx-4 px-4 pb-4 rounded-b-lg">
+                  <div className="text-xs text-gray-600 space-y-1">
+                    <div className="font-medium text-gray-700 mb-2">Variables you can use:</div>
+                    <div><code className="bg-gray-200 px-1.5 py-0.5 rounded">{`{customer_name}`}</code> - Customer's name</div>
+                    <div><code className="bg-gray-200 px-1.5 py-0.5 rounded">{`{store_name}`}</code> - Your store name</div>
+                    <div><code className="bg-gray-200 px-1.5 py-0.5 rounded">{`{product_catalog}`}</code> - Available products</div>
+                  </div>
+                </div>
+
+                <div className="mt-6 pt-6 border-t flex justify-end gap-3">
+                  <Button 
+                    variant="outline"
+                    onClick={resetPromptToDefault}
+                  >
+                    Reset to Default
+                  </Button>
+                  <Button 
+                    onClick={handleSaveBotSettings}
+                    disabled={saving}
+                  >
+                    {saving ? "Saving..." : "Save Changes"}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </Card>
+
+          {/* Bot Messages Card */}
+          <Card>
+            <button
+              onClick={() => toggleSection('messages')}
+              className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                </svg>
+                <div className="text-left">
+                  <h2 className="text-lg font-semibold text-gray-900">Message Templates</h2>
+                  <p className="text-sm text-gray-500">Customize automatic messages</p>
+                </div>
+              </div>
+              <svg
+                className={`w-5 h-5 text-gray-400 transform transition-transform ${
+                  expandedSection === 'messages' ? 'rotate-180' : ''
+                }`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {expandedSection === 'messages' && (
+              <div className="px-4 pb-4 space-y-4 border-t pt-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Welcome Message
+                  </label>
+                  <TextArea
+                    rows={3}
+                    placeholder="Hi! 👋 Welcome to our store. How can I help you today?"
+                    value={welcomeMessage}
+                    onChange={(e) => setWelcomeMessage(e.target.value)}
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Sent when a customer starts a conversation
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Away Message
+                  </label>
+                  <TextArea
+                    rows={3}
+                    placeholder="We're currently away but we'll get back to you soon!"
+                    value={awayMessage}
+                    onChange={(e) => setAwayMessage(e.target.value)}
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Sent when you're offline or unavailable
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Fallback Message
+                  </label>
+                  <TextArea
+                    rows={3}
+                    placeholder="I'm not sure I understand. Could you rephrase that?"
+                    value={fallbackMessage}
+                    onChange={(e) => setFallbackMessage(e.target.value)}
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Sent when the bot doesn't understand the customer's request
+                  </p>
+                </div>
+
+                <div className="mt-6 pt-6 border-t flex justify-end">
+                  <Button 
+                    onClick={handleSaveBotSettings}
+                    disabled={saving}
+                  >
+                    {saving ? "Saving..." : "Save Changes"}
+                  </Button>
+                </div>
+              </div>
+            )}
         </Card>
 
+          {/* Security Card */}
         <Card>
-          <div className="mb-4 text-base font-semibold text-gray-900">Preferences</div>
+            <button
+              onClick={() => toggleSection('password')}
+              className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                <div className="text-left">
+                  <h2 className="text-lg font-semibold text-gray-900">Change Password</h2>
+                  <p className="text-sm text-gray-500">Update your account password</p>
+                </div>
+              </div>
+              <svg
+                className={`w-5 h-5 text-gray-400 transform transition-transform ${
+                  expandedSection === 'password' ? 'rotate-180' : ''
+                }`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            
+            {expandedSection === 'password' && (
+              <div className="px-4 pb-4 border-t pt-4">
           <div className="space-y-4">
             <div>
-              <div className="mb-2 text-sm text-gray-700">Language</div>
-              <LanguageSwitcher value={language} onChange={setLanguage} />
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Current Password</label>
+                    <PasswordField
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      placeholder="Enter current password"
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">New Password</label>
+                      <PasswordField
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="Enter new password"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Confirm New Password</label>
+                      <PasswordField
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Confirm new password"
+                      />
+                    </div>
+                  </div>
+
+                  {newPassword && (
+                    <div className="text-xs text-gray-600 space-y-1">
+                      <div className={newPassword.length >= 6 ? "text-green-600" : "text-gray-500"}>
+                        {newPassword.length >= 6 ? "✓" : "○"} At least 6 characters
+                      </div>
+                      <div className={newPassword === confirmPassword && confirmPassword ? "text-green-600" : "text-gray-500"}>
+                        {newPassword === confirmPassword && confirmPassword ? "✓" : "○"} Passwords match
             </div>
           </div>
-          <div className="mt-4 flex justify-end">
-            <Button variant="outline" onClick={handleSavePreferences}>Save preferences</Button>
+                  )}
+                </div>
+
+                <div className="mt-6 pt-6 border-t flex justify-end">
+                  <Button 
+                    variant="outline" 
+                    onClick={handleChangePassword}
+                    disabled={changingPassword || !currentPassword || !newPassword || !confirmPassword}
+                  >
+                    {changingPassword ? "Changing..." : "Change Password"}
+                  </Button>
+                </div>
           </div>
+            )}
         </Card>
       </div>
 
+        {/* Sidebar */}
+        <div className="space-y-6">
+          {/* Bot Features Card */}
       <Card>
-        <div className="mb-4 text-base font-semibold text-gray-900">Security</div>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <PasswordField label="Current password" value={password} onChange={(e) => setPassword(e.target.value)} />
-          <PasswordField label="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
-          <PasswordField label="Confirm new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+            <div className="border-b pb-4 mb-6">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Bot Features
+              </h2>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="font-medium text-gray-900">Auto-Response</div>
+                  <div className="text-sm text-gray-600 mt-1">
+                    Automatically respond to customer messages
+                  </div>
+                </div>
+                <button
+                  onClick={() => setEnableAutoResponse(!enableAutoResponse)}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                    enableAutoResponse ? "bg-blue-600" : "bg-gray-200"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      enableAutoResponse ? "translate-x-5" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="flex items-start justify-between pt-4 border-t">
+                <div className="flex-1">
+                  <div className="font-medium text-gray-900">Product Search (RAG)</div>
+                  <div className="text-sm text-gray-600 mt-1">
+                    Enable AI-powered product recommendations
+                  </div>
+                </div>
+                <button
+                  onClick={() => setEnableRag(!enableRag)}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                    enableRag ? "bg-blue-600" : "bg-gray-200"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      enableRag ? "translate-x-5" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
         </div>
-        <div className="mt-4 flex justify-end">
-          <Button variant="outline" onClick={handleChangePassword}>Change password</Button>
+
+            <div className="mt-6 pt-6 border-t">
+              <Button onClick={handleSaveBotSettings} disabled={saving} className="w-full shadow-sm">
+                {saving ? "Saving..." : "Save Bot Settings"}
+              </Button>
         </div>
       </Card>
 
+          {/* Danger Zone Card */}
       <Card>
-        <div className="mb-4 text-base font-semibold text-gray-900">Bot Settings</div>
+            <div className="border-b pb-4 mb-6">
+              <h2 className="text-lg font-semibold text-rose-600 flex items-center gap-2">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                Danger Zone
+              </h2>
+            </div>
+
         <div className="space-y-4">
           <div>
-            <div className="mb-2 text-sm font-medium text-gray-700">Clear Bot Memory</div>
-            <div className="mb-3 text-sm text-gray-600">
-              Delete all conversation history and customer sessions from the bot. This will make the bot forget all previous conversations and start fresh with all customers.
+                <div className="text-sm font-medium text-gray-900 mb-2">Clear Bot Memory</div>
+                <div className="text-sm text-gray-600 mb-3">
+                  Delete all conversation history and customer sessions. The bot will start fresh with all customers.
             </div>
-            <div className="flex items-center gap-3">
               <Button 
                 variant="outline" 
-                onClick={handleClearBotMemory} 
+                  className="w-full border-rose-200 text-rose-600 hover:bg-rose-50"
+                  onClick={() => setShowClearMemoryConfirm(true)}
                 disabled={clearingMemory}
-                className="border-red-200 text-red-600 hover:bg-red-50"
               >
                 {clearingMemory ? (
                   <>
-                    <svg className="mr-2 h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <circle cx="12" cy="12" r="10" strokeWidth="3" strokeDasharray="32" className="opacity-25" />
-                      <path d="M12 2a10 10 0 0 1 10 10" strokeWidth="3" strokeLinecap="round" className="opacity-75" />
+                      <svg className="w-4 h-4 mr-2 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
                     Clearing...
                   </>
                 ) : (
                   <>
-                    <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                     Clear All Bot Memory
                   </>
                 )}
               </Button>
-              {memoryMessage && (
-                <div className={`text-sm ${memoryMessage.startsWith('✅') ? 'text-green-600' : 'text-red-600'}`}>
-                  {memoryMessage}
                 </div>
-              )}
             </div>
-          </div>
+          </Card>
         </div>
-      </Card>
+      </div>
+
+      {/* Clear Memory Confirmation Dialog */}
+      <ConfirmDialog
+        open={showClearMemoryConfirm}
+        title="Clear Bot Memory"
+        description="Are you sure you want to clear all bot chat memory? This will delete all conversation history and customer sessions. This action cannot be undone."
+        confirmText="Clear Memory"
+        destructive
+        onCancel={() => setShowClearMemoryConfirm(false)}
+        onConfirm={handleClearBotMemory}
+      />
     </div>
   );
 }
