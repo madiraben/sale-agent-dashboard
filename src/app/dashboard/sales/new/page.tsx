@@ -134,9 +134,9 @@ export default function NewOrderPage() {
     <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5 md:p-6">
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm text-gray-600">
-          <Link href="/dashboard/sales" className="text-gray-700 hover:underline">Sales</Link>
+          <Link href="/dashboard/sales" className="text-gray-700 hover:text-brand transition-colors">Sales</Link>
           <span>›</span>
-          <span className="font-medium text-gray-900">New Order</span>
+          <span className="font-bold text-brand">New Order</span>
         </div>
       </div>
 
@@ -144,9 +144,9 @@ export default function NewOrderPage() {
         {/* Left: Customer + Products */}
         <div className="space-y-6">
           {/* Customer block */}
-          <div className="rounded-lg border p-4">
+          <div className="rounded-lg border-2 bg-brand-subtle p-4" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
             <div className="mb-3 flex items-center justify-between">
-              <div className="text-sm font-semibold text-gray-900">Customer</div>
+              <div className="text-sm font-bold text-brand">Customer</div>
               <label className="flex items-center gap-2 text-sm text-gray-700">
                 <input type="checkbox" checked={useNewCustomer} onChange={(e) => setUseNewCustomer(e.target.checked)} />
                 Create new
@@ -173,14 +173,14 @@ export default function NewOrderPage() {
           </div>
 
           {/* Products block */}
-          <div className="rounded-lg border p-4">
-            <div className="mb-3 text-sm font-semibold text-gray-900">Products</div>
+          <div className="rounded-lg border-2 bg-brand-subtle p-4" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
+            <div className="mb-3 text-sm font-bold text-brand">Products</div>
             <div className="mb-2">
               <SearchInput placeholder="Search products" value={productSearch} onChange={(e) => setProductSearch(e.target.value)} />
             </div>
-            <div className="max-h-48 overflow-auto rounded border">
+            <div className="max-h-48 overflow-auto rounded border-2" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
               <table className="w-full text-left text-sm">
-                <thead className="sticky top-0 border-b bg-gray-50 text-gray-600">
+                <thead className="sticky top-0 border-b-2 bg-white text-gray-700 font-semibold" style={{ borderImage: "linear-gradient(90deg, var(--brand-start), var(--brand-end)) 1" }}>
                   <tr>
                     <th className="px-3 py-2">Product</th>
                     <th className="px-3 py-2">Price</th>
@@ -191,9 +191,9 @@ export default function NewOrderPage() {
                 <tbody>
                   {filteredProducts.map((p) => (
                     <tr key={p.id} className="border-t">
-                      <td className="px-3 py-2 text-gray-900">{p.name}</td>
-                      <td className="px-3 py-2">{Currency(p.price)}</td>
-                      <td className="px-3 py-2">{p.stock ?? "-"}</td>
+                      <td className="px-3 py-2 font-medium text-gray-900">{p.name}</td>
+                      <td className="px-3 py-2 font-semibold text-brand">{Currency(p.price)}</td>
+                      <td className="px-3 py-2 font-semibold text-brand">{p.stock ?? "-"}</td>
                       <td className="px-3 py-2">
                         <Button variant="outline" onClick={() => addProductToCart(p)}>Add</Button>
                       </td>
@@ -210,11 +210,11 @@ export default function NewOrderPage() {
 
         {/* Right: Cart + Submit */}
         <div className="space-y-6">
-          <div className="rounded-lg border p-4">
-            <div className="mb-2 text-sm font-semibold text-gray-900">Cart</div>
-            <div className="rounded border">
+          <div className="rounded-lg border-2 bg-brand-subtle p-4" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
+            <div className="mb-2 text-sm font-bold text-brand">Cart</div>
+            <div className="rounded border-2" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
               <table className="w-full text-left text-sm">
-                <thead className="border-b bg-gray-50 text-gray-600">
+                <thead className="border-b-2 bg-white text-gray-700 font-semibold" style={{ borderImage: "linear-gradient(90deg, var(--brand-start), var(--brand-end)) 1" }}>
                   <tr>
                     <th className="px-3 py-2">Item</th>
                     <th className="px-3 py-2 w-20">Qty</th>
@@ -236,8 +236,8 @@ export default function NewOrderPage() {
                       <td className="px-3 py-2">
                         <TextField type="number" value={String(r.price)} onChange={(e) => updatePrice(idx, Number(e.target.value))} />
                       </td>
-                      <td className="px-3 py-2">{Currency(r.qty * r.price)}</td>
-                      <td className="px-3 py-2"><button className="text-sm text-rose-600" onClick={() => removeRow(idx)}>Remove</button></td>
+                      <td className="px-3 py-2 font-semibold text-brand">{Currency(r.qty * r.price)}</td>
+                      <td className="px-3 py-2"><button className="text-sm text-rose-600 hover:text-rose-800 font-medium" onClick={() => removeRow(idx)}>Remove</button></td>
                     </tr>
                   ))}
                   {itemRows.length === 0 ? (
@@ -246,9 +246,9 @@ export default function NewOrderPage() {
                 </tbody>
               </table>
             </div>
-            <div className="mt-3 flex items-center justify-between text-base font-semibold">
-              <div>Total</div>
-              <div>{Currency(total)}</div>
+            <div className="mt-3 flex items-center justify-between text-base">
+              <div className="font-semibold text-gray-700">Total</div>
+              <div className="font-bold text-brand">{Currency(total)}</div>
             </div>
             <div className="mt-4">
               <div className="mb-1 text-sm text-gray-700">Order status</div>

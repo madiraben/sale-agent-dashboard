@@ -21,10 +21,17 @@ function ItemContainer({ active, children }: { active: boolean; children: React.
   return (
     <div
       className={`group relative flex items-center gap-4 rounded-lg px-4 py-3 text-base transition-colors ${
-        active ? "bg-white/10 text-white" : "text-white/70 hover:bg-white/5 hover:text-white"
+        active ? "bg-brand-subtle text-white" : "text-white/70 hover:bg-white/5 hover:text-white"
       }`}
     >
-      {active ? <span className="absolute inset-y-0 left-0 w-1 rounded-r bg-[#1E8BF7]" /> : null}
+      {active ? (
+        <span 
+          className="absolute inset-y-0 left-0 w-1 rounded-r bg-brand" 
+          style={{
+            background: 'linear-gradient(135deg, var(--brand-start), var(--brand-end))'
+          }}
+        />
+      ) : null}
       {children}
     </div>
   );
@@ -43,10 +50,15 @@ export default function Sidebar({ items, className = "" }: SidebarProps) {
   }, [pathname, items]);
 
   return (
-    <aside className={`flex min-h-screen w-64 flex-col bg-[#0b213f] ${className}`}>
-      <div className="flex h-[72px] items-center gap-3 px-5 shrink-0">
+    <aside 
+      className={`flex min-h-screen w-64 flex-col ${className}`}
+      style={{
+        background: 'linear-gradient(180deg, #0b213f 0%, #1a2f4f 100%)'
+      }}
+    >
+      <div className="flex h-[72px] items-center gap-3 px-5 shrink-0 border-b border-white/10">
         <Image src="/images/logo/logo2.png" alt="logo" width={42} height={42} />
-        <div className="text-lg font-semibold text-white">SALE AGENCY</div>
+        <div className="text-lg font-bold text-brand">SALE AGENCY</div>
       </div>
       <nav 
         className="mt-3 flex-1 space-y-2 px-4 pb-4"

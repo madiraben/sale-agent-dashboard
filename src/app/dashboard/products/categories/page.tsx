@@ -50,16 +50,16 @@ export default function ProductCategoriesPage() {
           </svg>
           <span className="text-gray-700">Products</span>
           <span>›</span>
-          <span className="font-medium text-gray-900">Categories</span>
+          <span className="font-bold text-brand">Categories</span>
         </div>
         <div className="flex items-center gap-2">
           <SearchInput className="hidden md:block" value={q} onChange={(e) => setQ(e.target.value)} />
-          <button className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50">
+          <button className="inline-flex h-9 w-9 items-center justify-center rounded-full border-2 text-gray-700 hover:bg-brand-subtle transition-all" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M3 6h18M6 12h12M10 18h4" />
             </svg>
           </button>
-          <button className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50">
+          <button className="inline-flex h-9 w-9 items-center justify-center rounded-full border-2 text-gray-700 hover:bg-brand-subtle transition-all" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <circle cx="12" cy="5" r="1.5" />
               <circle cx="12" cy="12" r="1.5" />
@@ -78,7 +78,7 @@ export default function ProductCategoriesPage() {
       <div className="overflow-x-auto">
         <table className="min-w-full text-left text-sm">
           <thead>
-            <tr className="border-y border-gray-200 text-gray-600">
+            <tr className="border-y-2 text-gray-700 font-semibold" style={{ borderImage: "linear-gradient(90deg, var(--brand-start), var(--brand-end)) 1" }}>
               <th className="px-4 py-3 w-14">No.</th>
               <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">Updated</th>
@@ -87,17 +87,17 @@ export default function ProductCategoriesPage() {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {filtered.map((c, idx) => (
-              <tr key={c.id} className="hover:bg-gray-50">
+              <tr key={c.id} className="hover:bg-brand-subtle transition-colors">
                 <td className="px-4 py-3 text-gray-700">{idx + 1}.</td>
                 <td className="px-4 py-3 text-gray-800">
                   <div className="inline-flex items-center gap-2">
-                    <span className="text-gray-700">{c.name}</span>
+                    <span className="font-semibold text-brand">{c.name}</span>
                   </div>
                 </td>
-                <td className="px-4 py-3">{c.updated_at ? new Date(c.updated_at as string).toLocaleDateString() : "-"}</td>
+                <td className="px-4 py-3 text-gray-700">{c.updated_at ? new Date(c.updated_at as string).toLocaleDateString() : "-"}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-2">
-                    <button className="inline-flex h-8 items-center justify-center rounded-lg border border-gray-300 px-3 text-sm text-gray-700 hover:bg-gray-50" onClick={() => setOpenEdit(c.id)}>
+                    <button className="inline-flex h-8 items-center justify-center rounded-lg border-2 px-3 text-sm font-medium hover:bg-brand-subtle transition-all" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }} onClick={() => setOpenEdit(c.id)}>
                       Edit
                     </button>
                     <button className="inline-flex h-8 items-center justify-center rounded-lg border border-red-200 px-3 text-sm text-red-600 hover:bg-red-50" onClick={() => setDeleteId(c.id)}>

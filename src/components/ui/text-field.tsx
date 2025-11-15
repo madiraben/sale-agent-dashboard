@@ -11,7 +11,7 @@ export default function TextField({ label, rightIcon, className = "", ...props }
       {label ? <label className="mb-2 block text-sm text-gray-700">{label}</label> : null}
       <div className="relative">
         <input
-          className={`w-full rounded-lg border border-gray-300 bg-white px-4 py-3 pr-10 text-gray-900 outline-none ring-primary/20 placeholder:text-gray-400 focus:border-primary focus:ring-2 ${className}`}
+          className={`w-full rounded-lg border border-gray-300 bg-white px-4 py-3 pr-10 text-gray-900 outline-none placeholder:text-gray-400 focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100 ${className}`}
           {...props}
         />
         {rightIcon ? (

@@ -30,10 +30,10 @@ export default function PublicBillingPage() {
   return (
     <div className="min-h-dvh bg-[#EEF2F7] p-6 md:p-10">
       <div className="mx-auto max-w-4xl mt-[100px]">
-        <div className="mb-6 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5">
-          <h1 className="text-2xl font-semibold text-gray-900">Pro Plan</h1>
-          <p className="mt-2 text-sm text-gray-600">Unlock full access to inventory, orders, AI knowledge base, analytics and more.</p>
-          <div className="mt-4 text-3xl font-bold text-gray-900">$20<span className="text-lg text-gray-600">/month</span></div>
+        <div className="mb-6 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5 border-2 bg-brand-subtle" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
+          <h1 className="text-2xl font-bold text-brand">Pro Plan</h1>
+          <p className="mt-2 text-sm text-gray-700">Unlock full access to inventory, orders, AI knowledge base, analytics and more.</p>
+          <div className="mt-4 text-3xl font-bold text-brand">$20<span className="text-lg text-gray-700">/month</span></div>
           <div className="mt-6 grid gap-3 md:grid-cols-2">
             <Feature>Unlimited products and categories</Feature>
             <Feature>Unlimited orders and customers</Feature>
@@ -51,10 +51,10 @@ export default function PublicBillingPage() {
 
         <div className="mb-6 grid gap-6 md:grid-cols-2">
           <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5">
-            <h2 className="mb-2 text-lg font-semibold text-gray-900">Compare plans</h2>
+            <h2 className="mb-2 text-lg font-bold text-brand">Compare plans</h2>
             <table className="w-full text-left text-sm">
-              <thead className="text-gray-600">
-                <tr>
+              <thead className="text-gray-700 font-semibold">
+                <tr className="border-b-2" style={{ borderImage: "linear-gradient(90deg, var(--brand-start), var(--brand-end)) 1" }}>
                   <th className="px-2 py-2">Feature</th>
                   <th className="px-2 py-2">Free</th>
                   <th className="px-2 py-2">Pro</th>
@@ -69,9 +69,9 @@ export default function PublicBillingPage() {
                   ["Priority Support", "-", "Included"],
                 ].map((r) => (
                   <tr key={r[0]}>
-                    <td className="px-2 py-2 text-gray-800">{r[0]}</td>
-                    <td className="px-2 py-2">{r[1]}</td>
-                    <td className="px-2 py-2">{r[2]}</td>
+                    <td className="px-2 py-2 font-medium text-gray-800">{r[0]}</td>
+                    <td className="px-2 py-2 text-gray-700">{r[1]}</td>
+                    <td className="px-2 py-2 font-semibold text-brand">{r[2]}</td>
                   </tr>
                 ))}
               </tbody>
@@ -92,8 +92,8 @@ export default function PublicBillingPage() {
 function Feature({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-start gap-2 text-sm text-gray-800">
-      <span className="mt-[2px] inline-block h-2 w-2 rounded-full bg-emerald-500" />
-      <span>{children}</span>
+      <span className="mt-[2px] inline-block h-2 w-2 rounded-full bg-brand" />
+      <span className="font-medium">{children}</span>
     </div>
   );
 }
@@ -143,11 +143,11 @@ function PlanCard({
   };
 
   return (
-    <div className="rounded-xl border p-4 transition-all duration-300">
+    <div className="rounded-xl border-2 p-4 transition-all duration-300 hover:bg-brand-subtle" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
       <div className="text-base font-semibold text-gray-900">{title}</div>
-      <div className="mt-1 text-2xl font-bold text-gray-900">
+      <div className="mt-1 text-2xl font-bold text-brand">
         {priceLabel}
-        <span className="text-sm text-gray-600">{subLabel}</span>
+        <span className="text-sm text-gray-700">{subLabel}</span>
       </div>
       <Button
         className={`mt-3 w-full justify-center ${
@@ -160,7 +160,7 @@ function PlanCard({
         {loading
           ? (
             <span className="inline-flex items-center">
-              <svg className="mr-2 h-4 w-4 animate-spin text-emerald-500" viewBox="0 0 24 24">
+              <svg className="mr-2 h-4 w-4 animate-spin text-white" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v2a6 6 0 00-6 6H4z"/>
               </svg>
@@ -176,8 +176,8 @@ function PlanCard({
 function Faq({ q, a }: { q: string; a: string }) {
   return (
     <div className="mb-3 text-sm">
-      <div className="font-medium text-gray-900">{q}</div>
-      <div className="text-gray-600">{a}</div>
+      <div className="font-semibold text-brand">{q}</div>
+      <div className="text-gray-700">{a}</div>
     </div>
   );
 }

@@ -225,9 +225,9 @@ export default function Detail() {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-5H9v5a2 2 0 0 1-2 2H3z" />
           </svg>
-          <Link href="/dashboard/products/products" className="text-gray-700 hover:underline">Products</Link>
+          <Link href="/dashboard/products/products" className="text-gray-700 hover:text-brand transition-colors">Products</Link>
           <span>›</span>
-          <span className="font-medium text-gray-900">{name || "(Unnamed)"}</span>
+          <span className="font-bold text-brand">{name || "(Unnamed)"}</span>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => router.push("/dashboard/products/products")}>Back</Button>
@@ -271,11 +271,11 @@ export default function Detail() {
             </div>
           </div>
 
-          <div className="mt-6 grid grid-cols-2 gap-4 rounded-lg border p-4 text-sm">
-            <div className="text-gray-600">Preview</div>
-            <div className="text-right font-semibold text-gray-900">{Currency(price)}</div>
-            <div className="text-gray-600">In stock</div>
-            <div className="text-right text-gray-900">{stock}</div>
+          <div className="mt-6 grid grid-cols-2 gap-4 rounded-lg border-2 bg-brand-subtle p-4 text-sm" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
+            <div className="font-medium text-gray-700">Preview</div>
+            <div className="text-right font-bold text-brand">{Currency(price)}</div>
+            <div className="font-medium text-gray-700">In stock</div>
+            <div className="text-right font-bold text-brand">{stock}</div>
           </div>
         </div>
       </div>

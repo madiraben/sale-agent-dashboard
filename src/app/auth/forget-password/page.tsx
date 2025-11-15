@@ -63,7 +63,15 @@ export default function ForgetPasswordPage() {
     }
   }, [email, router, supabase, validateEmail]);
 
-  if (checkingSession) return <LoadingScreen message="Preparing password reset..." />;
+  if (checkingSession)
+    return (
+      <LoadingScreen
+        message="Preparing password reset..."
+        logoSrc="/images/logo/logo.png"
+        backgroundClassName="bg-gradient-to-br from-cyan-50 to-purple-50"
+        dotClassName="bg-gradient-to-r from-cyan-500 to-purple-600"
+      />
+    );
 
   return (
     <div className="min-h-dvh bg-[#EEF2F7]">

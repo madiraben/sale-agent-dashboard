@@ -83,7 +83,7 @@ export default function Customers() {
           </svg>
           <span className="text-gray-700">Customers</span>
           <span>›</span>
-          <span className="font-medium text-gray-900">List</span>
+          <span className="font-semibold text-brand">List</span>
         </div>
         <div className="flex items-center gap-2">
           <SearchInput className="hidden md:block" value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -111,7 +111,7 @@ export default function Customers() {
         ) : (
           <table className="min-w-full text-left text-sm">
             <thead>
-              <tr className="border-y border-gray-200 text-gray-600">
+              <tr className="border-y-2 text-gray-700 font-semibold" style={{ borderImage: "linear-gradient(90deg, var(--brand-start), var(--brand-end)) 1" }}>
                 <th className="px-4 py-3 w-14">No.</th>
                 <th className="px-4 py-3">Customer</th>
                 <th className="px-4 py-3">Contact</th>
@@ -127,15 +127,15 @@ export default function Customers() {
                 <tr key={r.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-gray-700">{idx + 1}.</td>
                   <td className="px-4 py-3">
-                    <Link href={`/dashboard/customers/${r.id}`} className="flex items-center gap-3">
-                      <span className="grid h-9 w-9 place-items-center rounded-full bg-gray-100 text-gray-500">
+                    <Link href={`/dashboard/customers/${r.id}`} className="flex items-center gap-3 group">
+                      <span className="grid h-9 w-9 place-items-center rounded-full bg-brand text-white transition-transform group-hover:scale-110">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                           <circle cx="12" cy="7" r="4" />
                         </svg>
                       </span>
                       <div>
-                        <div className="font-medium text-gray-900">{r.name}</div>
+                        <div className="font-semibold text-gray-900 group-hover:text-brand transition-colors">{r.name}</div>
                         <div className="text-xs text-gray-500">View history</div>
                       </div>
                     </Link>
@@ -146,8 +146,8 @@ export default function Customers() {
                   </td>
                   <td className="px-4 py-3 text-gray-700">{r.address ?? "-"}</td>
                   <td className="px-4 py-3 text-gray-700">{r.last_date ?? "-"}</td>
-                  <td className="px-4 py-3">{r.orders_count}</td>
-                  <td className="px-4 py-3">{Currency(r.total as number)}</td>
+                  <td className="px-4 py-3 font-semibold text-brand">{r.orders_count}</td>
+                  <td className="px-4 py-3 font-semibold text-brand">{Currency(r.total as number)}</td>
                   <td className="px-4 py-3">
                     <IconButton round className="h-8 w-8" aria-label="More">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">

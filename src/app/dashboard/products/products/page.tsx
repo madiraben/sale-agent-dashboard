@@ -61,7 +61,7 @@ export default function Product() {
           </svg>
           <span className="text-gray-700">Products</span>
           <span>›</span>
-          <span className="font-medium text-gray-900">List</span>
+          <span className="font-bold text-brand">List</span>
         </div>
         <div className="flex items-center gap-2">
           <SearchInput className="hidden md:block" value={q} onChange={(e) => debouncedSetQ(e.target.value)} />
@@ -77,7 +77,7 @@ export default function Product() {
       <div className="overflow-x-auto">
         <table className="min-w-full text-left text-sm">
           <thead>
-            <tr className="border-y border-gray-200 text-gray-600">
+            <tr className="border-y-2 text-gray-700 font-semibold" style={{ borderImage: "linear-gradient(90deg, var(--brand-start), var(--brand-end)) 1" }}>
               <th className="px-4 py-3 w-14">No.</th>
               <th className="px-4 py-3">Product</th>
               <th className="px-4 py-3">SKU</th>
@@ -90,14 +90,14 @@ export default function Product() {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {filteredRows.map((p, idx) => (
-              <tr key={p.id} className="hover:bg-gray-50">
+              <tr key={p.id} className="hover:bg-brand-subtle transition-colors">
                 <td className="px-4 py-3 text-gray-700">{idx + 1}.</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
                     {p.image_url ? (
-                      <img src={p.image_url} alt={p.name} className="h-9 w-9 rounded-lg object-cover" />
+                      <img src={p.image_url} alt={p.name} className="h-9 w-9 rounded-lg object-cover border-2" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }} />
                     ) : (
-                      <span className="grid h-9 w-9 place-items-center rounded-lg bg-gray-100 text-gray-500">
+                      <span className="grid h-9 w-9 place-items-center rounded-lg bg-brand text-white">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                           <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.73z" />
                           <path d="M3.27 6.96L12 12l8.73-5.04" />
@@ -105,19 +105,20 @@ export default function Product() {
                       </span>
                     )}
                     <div>
-                      <div className="font-medium text-gray-900">{p.name}</div>
+                      <div className="font-semibold text-gray-900">{p.name}</div>
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-3">{p.sku}</td>
-                <td className="px-4 py-3">{(p as any).size ?? "-"}</td>
-                <td className="px-4 py-3">{(p as any).product_categories?.name ?? "-"}</td>
-                <td className="px-4 py-3">{Currency(p.price)}</td>
-                <td className="px-4 py-3">{p.stock}</td>
+                <td className="px-4 py-3 text-gray-700">{p.sku}</td>
+                <td className="px-4 py-3 text-gray-700">{(p as any).size ?? "-"}</td>
+                <td className="px-4 py-3 text-gray-700">{(p as any).product_categories?.name ?? "-"}</td>
+                <td className="px-4 py-3 font-semibold text-brand">{Currency(p.price)}</td>
+                <td className="px-4 py-3 font-semibold text-brand">{p.stock}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-2">
                     <button
-                      className="inline-flex h-8 items-center justify-center rounded-lg border border-gray-300 px-3 text-sm text-gray-700 hover:bg-gray-50"
+                      className="inline-flex h-8 items-center justify-center rounded-lg border-2 px-3 text-sm font-medium hover:bg-brand-subtle transition-all"
+                      style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}
                       onClick={() => router.push(`/dashboard/products/products/${p.id}`)}
                     >
                       Edit

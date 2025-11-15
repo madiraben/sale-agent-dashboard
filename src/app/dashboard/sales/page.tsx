@@ -137,7 +137,7 @@ export default function Sales() {
           </svg>
           <span className="text-gray-700">Sales</span>
           <span>›</span>
-          <span className="font-medium text-gray-900">All Orders</span>
+          <span className="font-bold text-brand">All Orders</span>
         </div>
         <div className="flex items-center gap-2">
           <SearchInput className="hidden md:block" placeholder="Search orders" value={q} onChange={(e) => debouncedSetQ(e.target.value)} />
@@ -174,7 +174,7 @@ export default function Sales() {
             </>
           ) : (
             <>
-              Total orders: <span className="font-medium text-gray-900">{totalCount}</span>
+              Total orders: <span className="font-semibold text-brand">{totalCount}</span>
               {totalPages > 1 && (
                 <span className="ml-2 text-gray-500">
                   (Page {currentPage} of {totalPages})
@@ -183,13 +183,13 @@ export default function Sales() {
             </>
           )}
         </div>
-        <div className="text-gray-600">Page total: <span className="font-medium text-gray-900">{Currency(grandTotal)}</span></div>
+        <div className="text-gray-600">Page total: <span className="font-bold text-brand">{Currency(grandTotal)}</span></div>
       </div>
 
       <div className="overflow-x-auto">
         <table className="min-w-full text-left text-sm">
           <thead>
-            <tr className="border-y border-gray-200 text-gray-600">
+            <tr className="border-y-2 text-gray-700 font-semibold" style={{ borderImage: "linear-gradient(90deg, var(--brand-start), var(--brand-end)) 1" }}>
               <th className="px-4 py-3 w-20">Order</th>
               <th className="px-4 py-3">Customer</th>
               <th className="px-4 py-3">Date</th>
@@ -202,20 +202,20 @@ export default function Sales() {
             {filtered.map((r) => (
               <tr
                 key={r.id}
-                className="hover:bg-gray-50 cursor-pointer"
+                className="hover:bg-brand-subtle cursor-pointer transition-colors"
                 onClick={() => setSelectedRow(r)}
               >
-                <td className="px-4 py-3 text-gray-700">{r.id}</td>
+                <td className="px-4 py-3 font-semibold text-brand">{r.id}</td>
                 <td className="px-4 py-3">
                   <Link
                     href={`/dashboard/customers/${r.customerId}`}
-                    className="text-[#1E8BF7] hover:underline"
+                    className="font-medium text-brand hover:underline"
                     onClick={(e) => e.stopPropagation()}
                   >
                     {r.customerName}
                   </Link>
                 </td>
-                <td className="px-4 py-3">{r.date}</td>
+                <td className="px-4 py-3 text-gray-700">{r.date}</td>
                 <td className="px-4 py-3">
                   <Badge
                     variant={r.status === "paid" ? "success" : r.status === "pending" ? "warning" : "danger"}
@@ -223,7 +223,7 @@ export default function Sales() {
                     {r.status}
                   </Badge>
                 </td>
-                <td className="px-4 py-3">{Currency(r.total)}</td>
+                <td className="px-4 py-3 font-semibold text-brand">{Currency(r.total)}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-2">
                     {r.status === "pending" ? (
@@ -344,19 +344,19 @@ function OrderDetailDialog({ row, open, onOpenChange, onAccept, onDecline, busy 
         <div className="grid grid-cols-2 gap-4">
           <div>
             <div className="text-gray-500">Customer</div>
-            <div className="text-gray-900">{row.customerName}</div>
+            <div className="font-semibold text-gray-900">{row.customerName}</div>
           </div>
           <div>
             <div className="text-gray-500">Date</div>
-            <div className="text-gray-900">{row.date}</div>
+            <div className="font-semibold text-gray-900">{row.date}</div>
           </div>
         </div>
         <div>
-          <div className="mb-2 text-gray-500">Items</div>
-          <div className="rounded-lg border">
+          <div className="mb-2 font-medium text-gray-700">Items</div>
+          <div className="rounded-lg border-2 bg-brand-subtle" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b text-gray-600">
+                <tr className="border-b-2 text-gray-700 font-semibold" style={{ borderImage: "linear-gradient(90deg, var(--brand-start), var(--brand-end)) 1" }}>
                   <th className="px-3 py-2">Product</th>
                   <th className="px-3 py-2">Qty</th>
                   <th className="px-3 py-2">Price</th>
@@ -366,10 +366,10 @@ function OrderDetailDialog({ row, open, onOpenChange, onAccept, onDecline, busy 
               <tbody>
                 {(row.items ?? []).map((it, i) => (
                   <tr key={i} className="border-t">
-                    <td className="px-3 py-2">{it.name}</td>
-                    <td className="px-3 py-2">{it.qty}</td>
-                    <td className="px-3 py-2">{Currency(it.price)}</td>
-                    <td className="px-3 py-2">{Currency(it.price * it.qty)}</td>
+                    <td className="px-3 py-2 font-medium text-gray-900">{it.name}</td>
+                    <td className="px-3 py-2 text-gray-700">{it.qty}</td>
+                    <td className="px-3 py-2 text-gray-700">{Currency(it.price)}</td>
+                    <td className="px-3 py-2 font-semibold text-brand">{Currency(it.price * it.qty)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -377,8 +377,8 @@ function OrderDetailDialog({ row, open, onOpenChange, onAccept, onDecline, busy 
           </div>
         </div>
         <div className="flex items-center justify-end gap-6">
-          <div className="text-gray-700">Total</div>
-          <div className="text-base font-semibold text-gray-900">{Currency(row.total)}</div>
+          <div className="font-medium text-gray-700">Total</div>
+          <div className="text-base font-bold text-brand">{Currency(row.total)}</div>
         </div>
         {row.status === "pending" ? (
           <div className="mt-4 flex items-center justify-end gap-2">

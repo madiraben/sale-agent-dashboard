@@ -286,8 +286,8 @@ Remember: You're here to make shopping easy and enjoyable, no stress!`
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-          <p className="text-sm text-gray-500 mt-1">Manage your account and bot configuration</p>
+          <h1 className="text-2xl font-bold text-brand">Settings</h1>
+          <p className="text-sm text-gray-600 mt-1">Manage your account and bot configuration</p>
         </div>
       </div>
 
@@ -296,9 +296,9 @@ Remember: You're here to make shopping easy and enjoyable, no stress!`
         <div className="lg:col-span-2 space-y-6">
           {/* Account Information Card */}
           <Card>
-            <div className="border-b pb-4 mb-6">
-              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="border-b-2 pb-4 mb-6" style={{ borderImage: "linear-gradient(90deg, var(--brand-start), var(--brand-end)) 1" }}>
+              <h2 className="text-lg font-bold text-brand flex items-center gap-2">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
                 Account Information
@@ -315,15 +315,15 @@ Remember: You're here to make shopping easy and enjoyable, no stress!`
           <Card>
             <button
               onClick={() => toggleSection('personality')}
-              className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+              className="w-full flex items-center justify-between p-4 hover:bg-brand-subtle transition-colors rounded-t-lg"
             >
               <div className="flex items-center gap-3">
-                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <div className="text-left">
-                  <h2 className="text-lg font-semibold text-gray-900">Bot Personality</h2>
-                  <p className="text-sm text-gray-500">Choose how your bot communicates</p>
+                  <h2 className="text-lg font-bold text-brand">Bot Personality</h2>
+                  <p className="text-sm text-gray-600">Choose how your bot communicates</p>
                 </div>
               </div>
               <svg
@@ -346,9 +346,10 @@ Remember: You're here to make shopping easy and enjoyable, no stress!`
                     onClick={() => handlePersonalityChange(option.value)}
                     className={`mt-3 relative flex items-start p-4 rounded-xl border-2 cursor-pointer transition-all ${
                       botPersonality === option.value
-                        ? "border-blue-500 bg-blue-50"
+                        ? "bg-brand-subtle"
                         : "border-gray-200 hover:border-gray-300 bg-white"
                     }`}
+                    style={botPersonality === option.value ? { borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" } : undefined}
                   >
                     <div className="flex items-center h-5">
                       <input
@@ -377,15 +378,15 @@ Remember: You're here to make shopping easy and enjoyable, no stress!`
           <Card>
             <button
               onClick={() => toggleSection('prompt')}
-              className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+              className="w-full flex items-center justify-between p-4 hover:bg-brand-subtle transition-colors rounded-t-lg"
             >
               <div className="flex items-center gap-3">
-                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
                 <div className="text-left">
-                  <h2 className="text-lg font-semibold text-gray-900">Bot Prompt Template</h2>
-                  <p className="text-sm text-gray-500">Customize how your bot behaves</p>
+                  <h2 className="text-lg font-bold text-brand">Bot Prompt Template</h2>
+                  <p className="text-sm text-gray-600">Customize how your bot behaves</p>
                 </div>
               </div>
               <svg
@@ -472,15 +473,15 @@ Remember: You're here to make shopping easy and enjoyable, no stress!`
           <Card>
             <button
               onClick={() => toggleSection('messages')}
-              className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+              className="w-full flex items-center justify-between p-4 hover:bg-brand-subtle transition-colors rounded-t-lg"
             >
               <div className="flex items-center gap-3">
-                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
                 </svg>
                 <div className="text-left">
-                  <h2 className="text-lg font-semibold text-gray-900">Message Templates</h2>
-                  <p className="text-sm text-gray-500">Customize automatic messages</p>
+                  <h2 className="text-lg font-bold text-brand">Message Templates</h2>
+                  <p className="text-sm text-gray-600">Customize automatic messages</p>
                 </div>
               </div>
               <svg
@@ -558,15 +559,15 @@ Remember: You're here to make shopping easy and enjoyable, no stress!`
         <Card>
             <button
               onClick={() => toggleSection('password')}
-              className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+              className="w-full flex items-center justify-between p-4 hover:bg-brand-subtle transition-colors rounded-t-lg"
             >
               <div className="flex items-center gap-3">
-                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                 </svg>
                 <div className="text-left">
-                  <h2 className="text-lg font-semibold text-gray-900">Change Password</h2>
-                  <p className="text-sm text-gray-500">Update your account password</p>
+                  <h2 className="text-lg font-bold text-brand">Change Password</h2>
+                  <p className="text-sm text-gray-600">Update your account password</p>
                 </div>
               </div>
               <svg
@@ -643,8 +644,8 @@ Remember: You're here to make shopping easy and enjoyable, no stress!`
         <div className="space-y-6">
           {/* Danger Zone Card */}
       <Card>
-            <div className="border-b pb-4 mb-6">
-              <h2 className="text-lg font-semibold text-rose-600 flex items-center gap-2">
+            <div className="border-b-2 border-rose-300 pb-4 mb-6">
+              <h2 className="text-lg font-bold text-rose-600 flex items-center gap-2">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
@@ -654,8 +655,8 @@ Remember: You're here to make shopping easy and enjoyable, no stress!`
 
         <div className="space-y-4">
           <div>
-                <div className="text-sm font-medium text-gray-900 mb-2">Clear Bot Memory</div>
-                <div className="text-sm text-gray-600 mb-3">
+                <div className="text-sm font-bold text-gray-900 mb-2">Clear Bot Memory</div>
+                <div className="text-sm text-gray-700 mb-3">
                   Delete all conversation history and customer sessions. The bot will start fresh with all customers.
             </div>
               <Button 

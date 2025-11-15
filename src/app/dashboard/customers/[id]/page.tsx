@@ -70,7 +70,7 @@ export default function CustomerHistory() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">Customer not found</h2>
+            <h2 className="text-lg font-bold text-brand">Customer not found</h2>
             <p className="text-sm text-gray-600">The requested customer does not exist or was removed.</p>
           </div>
           <Button variant="outline" onClick={() => router.push("/dashboard/customers")}>Back to customers</Button>
@@ -83,7 +83,7 @@ export default function CustomerHistory() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">{customer.name}</h2>
+          <h2 className="text-lg font-bold text-brand">{customer.name}</h2>
           <p className="text-sm text-gray-600">
             {customer.phone} {customer.email ? `• ${customer.email}` : ""}
           </p>
@@ -97,11 +97,11 @@ export default function CustomerHistory() {
       </div>
 
       <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5">
-        <h3 className="mb-4 text-base font-semibold text-gray-900">Order history</h3>
+        <h3 className="mb-4 text-base font-bold text-brand">Order history</h3>
         <div className="overflow-x-auto">
           <table className="min-w-full text-left text-sm">
-            <thead className="text-gray-600">
-              <tr>
+            <thead className="text-gray-700 font-semibold">
+              <tr className="border-b-2" style={{ borderImage: "linear-gradient(90deg, var(--brand-start), var(--brand-end)) 1" }}>
                 <th className="px-3 py-2">Order ID</th>
                 <th className="px-3 py-2">Date</th>
                 <th className="px-3 py-2">Total</th>
@@ -132,10 +132,10 @@ export default function CustomerHistory() {
                     }
                   }}
                 >
-                  <td className="px-3 py-2 font-medium text-gray-900">{o.id}</td>
-                  <td className="px-3 py-2">{o.date}</td>
-                  <td className="px-3 py-2">{Currency(o.total as number)}</td>
-                  <td className="px-3 py-2 capitalize">{o.status}</td>
+                  <td className="px-3 py-2 font-semibold text-brand">{o.id}</td>
+                  <td className="px-3 py-2 text-gray-700">{o.date}</td>
+                  <td className="px-3 py-2 font-semibold text-brand">{Currency(o.total as number)}</td>
+                  <td className="px-3 py-2 capitalize text-gray-700">{o.status}</td>
                 </tr>
               ))}
               {history.length === 0 ? (
@@ -164,13 +164,13 @@ export default function CustomerHistory() {
               </div>
               <div className="text-right">
                 <div className="text-gray-500">Total</div>
-                <div className="text-base font-semibold text-gray-900">{Currency(selectedOrder.total)}</div>
+                <div className="text-base font-bold text-brand">{Currency(selectedOrder.total)}</div>
               </div>
             </div>
-            <div className="rounded-lg border">
+            <div className="rounded-lg border-2 bg-brand-subtle" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
               <table className="w-full text-left text-sm">
                 <thead>
-                  <tr className="border-b text-gray-600">
+                  <tr className="border-b-2 text-gray-700 font-semibold" style={{ borderImage: "linear-gradient(90deg, var(--brand-start), var(--brand-end)) 1" }}>
                     <th className="px-3 py-2">Product</th>
                     <th className="px-3 py-2">Qty</th>
                     <th className="px-3 py-2">Price</th>
@@ -183,10 +183,10 @@ export default function CustomerHistory() {
                   ) : (
                     orderItems.map((it, i) => (
                       <tr key={i} className="border-t">
-                        <td className="px-3 py-2">{it.name}</td>
-                        <td className="px-3 py-2">{it.qty}</td>
-                        <td className="px-3 py-2">{Currency(it.price)}</td>
-                        <td className="px-3 py-2">{Currency(it.price * it.qty)}</td>
+                        <td className="px-3 py-2 font-medium text-gray-900">{it.name}</td>
+                        <td className="px-3 py-2 text-gray-700">{it.qty}</td>
+                        <td className="px-3 py-2 text-gray-700">{Currency(it.price)}</td>
+                        <td className="px-3 py-2 font-semibold text-brand">{Currency(it.price * it.qty)}</td>
                       </tr>
                     ))
                   )}
