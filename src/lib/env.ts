@@ -3,19 +3,31 @@ import { z } from "zod";
 /**
  * Environment variable validation schema
  * This ensures all required environment variables are present and valid at runtime
+ * 
+ * Note: Secrets are optional during build time but should be present at runtime
  */
+const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build' || 
+                    process.env.NODE_ENV === undefined;
+
 const envSchema = z.object({
   // Node Environment
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
 
-  // Supabase Configuration
+  // Supabase Configuration (public keys required at build time)
   NEXT_PUBLIC_SUPABASE_URL: z.string().url("Invalid Supabase URL"),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1, "Supabase anon key is required"),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, "Supabase service role key is required"),
+  // Secrets optional at build time, required at runtime
+  SUPABASE_SERVICE_ROLE_KEY: isBuildTime 
+    ? z.string().optional() 
+    : z.string().min(1, "Supabase service role key is required"),
 
-  // Stripe Configuration
-  STRIPE_SECRET_KEY: z.string().startsWith("sk_", "Invalid Stripe secret key format"),
-  STRIPE_WEBHOOK_SECRET: z.string().min(1, "Stripe webhook secret is required"),
+  // Stripe Configuration (optional at build time)
+  STRIPE_SECRET_KEY: isBuildTime
+    ? z.string().optional()
+    : z.string().startsWith("sk_", "Invalid Stripe secret key format"),
+  STRIPE_WEBHOOK_SECRET: isBuildTime
+    ? z.string().optional()
+    : z.string().min(1, "Stripe webhook secret is required"),
   STRIPE_PRICE_MONTHLY: z.string().optional(),
   STRIPE_PRICE_QUARTERLY: z.string().optional(),
   STRIPE_PRICE_YEARLY: z.string().optional(),
@@ -25,8 +37,10 @@ const envSchema = z.object({
   APP_URL: z.string().url("Invalid app URL").optional(),
   NEXT_PUBLIC_APP_URL: z.string().url("Invalid public app URL").optional(),
 
-  // OpenAI Configuration
-  OPENAI_API_KEY: z.string().min(1, "OpenAI API key is required"),
+  // OpenAI Configuration (optional at build time)
+  OPENAI_API_KEY: isBuildTime
+    ? z.string().optional()
+    : z.string().min(1, "OpenAI API key is required"),
   OPENAI_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
   OPENAI_MODEL: z.string().default("gpt-4o-mini"),
 
