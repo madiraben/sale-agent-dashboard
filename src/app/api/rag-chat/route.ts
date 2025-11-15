@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     if (incomingConversationId) {
       const { data: conv, error: convErr } = await supabase
         .from("chat_conversations")
-        .select("id, summary, current_section_number, purchased")
+        .select("id, summary")
         .eq("id", incomingConversationId)
         .single();
       if (!conv || convErr) {

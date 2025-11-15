@@ -49,4 +49,3 @@ export async function getGoogleCloudAccessToken(): Promise<string> {
   return data.access_token as string;
 }
 
-

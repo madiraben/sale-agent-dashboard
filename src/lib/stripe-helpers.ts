@@ -86,4 +86,3 @@ export async function resolveUserTenant(supabase: SupabaseClient): Promise<{
   return { tenantId, tenant };
 }
 
-
