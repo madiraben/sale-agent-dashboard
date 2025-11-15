@@ -10,7 +10,7 @@ type Message = {
 
 export async function POST(req: NextRequest) {
   try {
-    const { query, conversationHistory = [], conversationId: incomingConversationId } = await req.json();
+    const { query = [], conversationId: incomingConversationId } = await req.json();
 
     if (!query) {
       return NextResponse.json({ error: "Query is required" }, { status: 400 });
