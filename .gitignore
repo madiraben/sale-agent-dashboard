@@ -2,7 +2,6 @@
 
 # dependencies
 /node_modules
-/supabase_sql
 /.pnp
 .pnp.*
 .yarn/*
@@ -33,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # Google Cloud credentials (never commit these!)
 *.json
@@ -48,5 +48,4 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-/supabase_sql
-/src/supabase_sql
+/src/database
