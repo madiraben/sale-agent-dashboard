@@ -12,7 +12,7 @@ export default function StatCard({ icon, value, label }: StatCardProps) {
       <div className="flex items-center gap-3">
         <span className="grid h-10 w-10 place-items-center rounded-full bg-brand">{icon}</span>
         <div>
-          <div className="text-xl font-bold text-brand">{value}</div>
+          <div className="text-xl font-bold text-gray-900">{value}</div>
           <div className="text-sm font-medium text-gray-600">{label}</div>
         </div>
       </div>

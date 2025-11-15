@@ -155,16 +155,28 @@ export default function Playground() {
           </svg>
           <span className="text-gray-700">Playground</span>
           <span>›</span>
-          <span className="font-bold text-brand">RAG Chat</span>
+          <span className="font-bold text-gray-900">RAG Chat</span>
         </div>
         <div className="flex items-center gap-2">
           <SearchInput className="hidden md:block" placeholder="Search history" />
-          <button className="inline-flex h-9 w-9 items-center justify-center rounded-full border-2 text-gray-700 hover:bg-brand-subtle hover:border-transparent transition-all" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
+          <button 
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-gray-700 hover:bg-brand-subtle transition-all"
+            style={{
+              background: 'linear-gradient(white, white) padding-box, linear-gradient(135deg, var(--brand-start), var(--brand-end)) border-box',
+              border: '2px solid transparent'
+            }}
+          >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M3 6h18M6 12h12M10 18h4" />
             </svg>
           </button>
-          <button className="inline-flex h-9 w-9 items-center justify-center rounded-full border-2 text-gray-700 hover:bg-brand-subtle hover:border-transparent transition-all" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
+          <button 
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-gray-700 hover:bg-brand-subtle transition-all"
+            style={{
+              background: 'linear-gradient(white, white) padding-box, linear-gradient(135deg, var(--brand-start), var(--brand-end)) border-box',
+              border: '2px solid transparent'
+            }}
+          >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <circle cx="12" cy="5" r="1.5" />
               <circle cx="12" cy="12" r="1.5" />

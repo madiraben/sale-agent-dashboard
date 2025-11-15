@@ -26,7 +26,7 @@ export default function Topbar({ title }: TopbarProps) {
       }}
     >
       <div className="flex items-center gap-5">
-        {title ? <h1 className="text-xl font-bold text-brand">{title}</h1> : null}
+        {title ? <h1 className="text-xl font-bold text-gray-900">{title}</h1> : null}
       </div>
       <div className="flex items-center gap-4 md:gap-6">
         <IconButton aria-label="Notifications">
@@ -85,10 +85,11 @@ function IconButton({ children, ...props }: React.ButtonHTMLAttributes<HTMLButto
   return (
     <button
       {...props}
-      className="group inline-flex h-12 w-12 items-center justify-center rounded-full bg-white text-lg transition-all hover:bg-brand-subtle"
+      className="group inline-flex h-12 w-12 items-center justify-center bg-white text-lg transition-all hover:bg-brand-subtle relative"
       style={{
-        border: '2px solid',
-        borderImage: 'linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1'
+        borderRadius: '20%',
+        background: 'linear-gradient(white, white) padding-box, linear-gradient(135deg, var(--brand-start), var(--brand-end)) border-box',
+        border: '2px solid transparent'
       }}
     >
       {children}

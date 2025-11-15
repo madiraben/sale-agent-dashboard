@@ -61,7 +61,7 @@ export default function Product() {
           </svg>
           <span className="text-gray-700">Products</span>
           <span>›</span>
-          <span className="font-bold text-brand">List</span>
+          <span className="font-bold text-gray-900">List</span>
         </div>
         <div className="flex items-center gap-2">
           <SearchInput className="hidden md:block" value={q} onChange={(e) => debouncedSetQ(e.target.value)} />
@@ -112,8 +112,8 @@ export default function Product() {
                 <td className="px-4 py-3 text-gray-700">{p.sku}</td>
                 <td className="px-4 py-3 text-gray-700">{(p as any).size ?? "-"}</td>
                 <td className="px-4 py-3 text-gray-700">{(p as any).product_categories?.name ?? "-"}</td>
-                <td className="px-4 py-3 font-semibold text-brand">{Currency(p.price)}</td>
-                <td className="px-4 py-3 font-semibold text-brand">{p.stock}</td>
+                <td className="px-4 py-3 font-semibold text-gray-900">{Currency(p.price)}</td>
+                <td className="px-4 py-3 font-semibold text-gray-900">{p.stock}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-2">
                     <button

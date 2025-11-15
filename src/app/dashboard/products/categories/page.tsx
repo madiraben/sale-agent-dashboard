@@ -50,7 +50,7 @@ export default function ProductCategoriesPage() {
           </svg>
           <span className="text-gray-700">Products</span>
           <span>›</span>
-          <span className="font-bold text-brand">Categories</span>
+          <span className="font-bold text-gray-900">Categories</span>
         </div>
         <div className="flex items-center gap-2">
           <SearchInput className="hidden md:block" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -91,7 +91,7 @@ export default function ProductCategoriesPage() {
                 <td className="px-4 py-3 text-gray-700">{idx + 1}.</td>
                 <td className="px-4 py-3 text-gray-800">
                   <div className="inline-flex items-center gap-2">
-                    <span className="font-semibold text-brand">{c.name}</span>
+                    <span className="font-semibold text-gray-900">{c.name}</span>
                   </div>
                 </td>
                 <td className="px-4 py-3 text-gray-700">{c.updated_at ? new Date(c.updated_at as string).toLocaleDateString() : "-"}</td>

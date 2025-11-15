@@ -137,7 +137,7 @@ export default function Sales() {
           </svg>
           <span className="text-gray-700">Sales</span>
           <span>›</span>
-          <span className="font-bold text-brand">All Orders</span>
+          <span className="font-bold text-gray-900">All Orders</span>
         </div>
         <div className="flex items-center gap-2">
           <SearchInput className="hidden md:block" placeholder="Search orders" value={q} onChange={(e) => debouncedSetQ(e.target.value)} />
@@ -174,7 +174,7 @@ export default function Sales() {
             </>
           ) : (
             <>
-              Total orders: <span className="font-semibold text-brand">{totalCount}</span>
+              Total orders: <span className="font-semibold text-gray-900">{totalCount}</span>
               {totalPages > 1 && (
                 <span className="ml-2 text-gray-500">
                   (Page {currentPage} of {totalPages})
@@ -183,7 +183,7 @@ export default function Sales() {
             </>
           )}
         </div>
-        <div className="text-gray-600">Page total: <span className="font-bold text-brand">{Currency(grandTotal)}</span></div>
+        <div className="text-gray-600">Page total: <span className="font-bold text-gray-900">{Currency(grandTotal)}</span></div>
       </div>
 
       <div className="overflow-x-auto">
@@ -205,11 +205,11 @@ export default function Sales() {
                 className="hover:bg-brand-subtle cursor-pointer transition-colors"
                 onClick={() => setSelectedRow(r)}
               >
-                <td className="px-4 py-3 font-semibold text-brand">{r.id}</td>
+                <td className="px-4 py-3 font-semibold text-gray-900">{r.id}</td>
                 <td className="px-4 py-3">
                   <Link
                     href={`/dashboard/customers/${r.customerId}`}
-                    className="font-medium text-brand hover:underline"
+                    className="font-medium text-gray-900 hover:underline"
                     onClick={(e) => e.stopPropagation()}
                   >
                     {r.customerName}
@@ -223,7 +223,7 @@ export default function Sales() {
                     {r.status}
                   </Badge>
                 </td>
-                <td className="px-4 py-3 font-semibold text-brand">{Currency(r.total)}</td>
+                <td className="px-4 py-3 font-semibold text-gray-900">{Currency(r.total)}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-2">
                     {r.status === "pending" ? (
@@ -369,7 +369,7 @@ function OrderDetailDialog({ row, open, onOpenChange, onAccept, onDecline, busy 
                     <td className="px-3 py-2 font-medium text-gray-900">{it.name}</td>
                     <td className="px-3 py-2 text-gray-700">{it.qty}</td>
                     <td className="px-3 py-2 text-gray-700">{Currency(it.price)}</td>
-                    <td className="px-3 py-2 font-semibold text-brand">{Currency(it.price * it.qty)}</td>
+                    <td className="px-3 py-2 font-semibold text-gray-900">{Currency(it.price * it.qty)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -378,7 +378,7 @@ function OrderDetailDialog({ row, open, onOpenChange, onAccept, onDecline, busy 
         </div>
         <div className="flex items-center justify-end gap-6">
           <div className="font-medium text-gray-700">Total</div>
-          <div className="text-base font-bold text-brand">{Currency(row.total)}</div>
+          <div className="text-base font-bold text-gray-900">{Currency(row.total)}</div>
         </div>
         {row.status === "pending" ? (
           <div className="mt-4 flex items-center justify-end gap-2">

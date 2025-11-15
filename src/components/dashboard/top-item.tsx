@@ -22,7 +22,7 @@ export default function TopItem({ avatar, title, subtitle, amount, percent }: To
       </div>
       <div className="text-right">
         <div className="font-semibold text-gray-900">{amount}</div>
-        {percent ? <div className="text-xs font-semibold text-brand">{percent}</div> : null}
+        {percent ? <div className="text-xs font-semibold text-gray-900-brand">{percent}</div> : null}
       </div>
     </div>
   );

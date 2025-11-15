@@ -9,7 +9,7 @@ export function GaugePlaceholder() {
       </div>
       <div className="mt-2 text-center text-sm text-gray-700">
         <div className="font-medium">Total</div>
-        <div className="text-base font-bold text-brand">18</div>
+        <div className="text-base font-bold text-gray-900">18</div>
       </div>
     </div>
   );

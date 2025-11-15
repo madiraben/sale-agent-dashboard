@@ -146,8 +146,8 @@ export default function Customers() {
                   </td>
                   <td className="px-4 py-3 text-gray-700">{r.address ?? "-"}</td>
                   <td className="px-4 py-3 text-gray-700">{r.last_date ?? "-"}</td>
-                  <td className="px-4 py-3 font-semibold text-brand">{r.orders_count}</td>
-                  <td className="px-4 py-3 font-semibold text-brand">{Currency(r.total as number)}</td>
+                  <td className="px-4 py-3 font-semibold text-gray-900">{r.orders_count}</td>
+                  <td className="px-4 py-3 font-semibold text-gray-900">{Currency(r.total as number)}</td>
                   <td className="px-4 py-3">
                     <IconButton round className="h-8 w-8" aria-label="More">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
