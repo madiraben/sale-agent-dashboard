@@ -10,6 +10,14 @@ const nextConfig: NextConfig = {
           try { return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL|| "https://example.supabase.co").hostname; } catch { return "example.supabase.co"; }
         })(),
       },
+      {
+        protocol: "https",
+        hostname: "static0.xdaimages.com",
+      },
+      {
+        protocol: "https",
+        hostname: "images.unsplash.com",
+      },
     ],
   },
 };

@@ -311,69 +311,6 @@ Remember: You're here to make shopping easy and enjoyable, no stress!`
             </div>
           </Card>
 
-          {/* Bot Personality Card */}
-          <Card>
-            <button
-              onClick={() => toggleSection('personality')}
-              className="w-full flex items-center justify-between p-4 hover:bg-brand-subtle transition-colors rounded-t-lg"
-            >
-              <div className="flex items-center gap-3">
-                <svg className="w-5 h-5 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div className="text-left">
-                  <h2 className="text-lg font-bold text-gray-900">Bot Personality</h2>
-                  <p className="text-sm text-gray-600">Choose how your bot communicates</p>
-                </div>
-              </div>
-              <svg
-                className={`w-5 h-5 text-gray-400 transform transition-transform ${
-                  expandedSection === 'personality' ? 'rotate-180' : ''
-                }`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-            
-            {expandedSection === 'personality' && (
-              <div className="px-4 pb-4 space-y-3 border-t">
-                {personalityOptions.map((option) => (
-                  <div
-                    key={option.value}
-                    onClick={() => handlePersonalityChange(option.value)}
-                    className={`mt-3 relative flex items-start p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                      botPersonality === option.value
-                        ? "bg-brand-subtle"
-                        : "border-gray-200 hover:border-gray-300 bg-white"
-                    }`}
-                    style={botPersonality === option.value ? { borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" } : undefined}
-                  >
-                    <div className="flex items-center h-5">
-                      <input
-                        type="radio"
-                        checked={botPersonality === option.value}
-                        onChange={() => handlePersonalityChange(option.value)}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div className="ml-3 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-2xl">{option.emoji}</span>
-                        <label className="font-semibold text-gray-900 cursor-pointer">
-                          {option.label}
-                        </label>
-                      </div>
-                      <p className="text-sm text-gray-600 mt-1">{option.description}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
-
           {/* Prompt Template Card */}
           <Card>
             <button
