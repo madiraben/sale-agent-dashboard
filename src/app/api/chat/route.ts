@@ -27,8 +27,7 @@ export async function POST(req: NextRequest) {
 
     const payload = {
       model: "gpt-5-mini",
-      messages,
-      temperature: 0.7,
+      messages
     };
 
     let resp: Response | null = null;

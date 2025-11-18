@@ -146,7 +146,7 @@ export async function POST(req: NextRequest) {
     const openaiResp = await fetch(process.env.OPENAI_BASE_URL + "/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-      body: JSON.stringify({ model: process.env.OPENAI_MODEL, messages, temperature: 0.7, max_tokens: 500, stream: true }),
+      body: JSON.stringify({ model: process.env.OPENAI_MODEL, messages, stream: true }),
     });
 
     if (!openaiResp.ok || !openaiResp.body) {
@@ -247,9 +247,7 @@ export async function POST(req: NextRequest) {
                 messages: [
                   { role: "system", content: "Summarize the conversation context in ≤60 words, keep key entities and intent." },
                   { role: "user", content: summaryInput },
-                ],
-                temperature: 0.2,
-                max_tokens: 120,
+                ]
               }),
             });
             const sumJson = await sumResp.json().catch(() => null);

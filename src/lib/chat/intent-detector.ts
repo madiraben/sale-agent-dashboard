@@ -62,9 +62,7 @@ JSON:`;
         messages: [
           { role: "system", content: "You are an intent classification expert. Return only valid JSON." },
           { role: "user", content: prompt },
-        ],
-        temperature: 0,
-        max_tokens: 600,
+        ]
       }),
     });
     const j = await resp.json().catch(() => null);

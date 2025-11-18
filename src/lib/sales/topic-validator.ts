@@ -69,9 +69,7 @@ Respond with ONLY this JSON format:
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: `User message: "${userMessage}"\n\nIs this on-topic for a shopping/product assistant?` },
-        ],
-        temperature: 0.1,
-        max_tokens: 150,
+        ]
       }),
     });
 

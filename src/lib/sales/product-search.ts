@@ -112,9 +112,7 @@ Which products match? Return product numbers only.`;
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
-        ],
-        temperature: 0,
-        max_tokens: 150,
+        ]
       }),
     });
 

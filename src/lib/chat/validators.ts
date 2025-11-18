@@ -13,9 +13,7 @@ async function complete(systemPrompt: string, userPrompt: string): Promise<strin
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
-      ],
-      temperature: 0.1,
-      max_tokens: 500,
+      ]
     }),
   });
   

@@ -48,7 +48,7 @@ If customer asks something unrelated, redirect warmly in their language:
 Product information available:
 ${context}` },
       { role: "user", content: text },
-    ], temperature: 0.9, max_tokens: 1000 }),
+    ]}),
   });
   let tokensUsed = "0";
   // Try to read from response headers first (e.g., x-openai-tokens), otherwise fall back to JSON usage fields

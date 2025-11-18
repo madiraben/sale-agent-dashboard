@@ -54,8 +54,6 @@ export async function generateAIResponse(context: ResponseContext): Promise<stri
       body: JSON.stringify({
         model: appConfig.openai.model,
         messages,
-        temperature: 0.7, // More creative for natural responses
-        max_tokens: 500,
       }),
     });
 

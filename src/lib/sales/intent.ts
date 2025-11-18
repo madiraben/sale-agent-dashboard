@@ -108,9 +108,7 @@ export async function extractSalesIntent(
         messages: [
           { role: "system", content: SYSTEM },
           { role: "user", content: contextMsg },
-        ],
-        temperature: 0.1,
-        max_tokens: 300,
+        ]
       }),
     });
 

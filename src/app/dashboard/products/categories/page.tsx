@@ -54,12 +54,12 @@ export default function ProductCategoriesPage() {
         </div>
         <div className="flex items-center gap-2">
           <SearchInput className="hidden md:block" value={q} onChange={(e) => setQ(e.target.value)} />
-          <button className="inline-flex h-9 w-9 items-center justify-center rounded-full border-2 text-gray-700 hover:bg-brand-subtle transition-all" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
+          <button className="inline-flex items-center justify-center border border-gray-300 text-gray-700 hover:bg-gray-50 h-9 w-9 rounded-full ">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M3 6h18M6 12h12M10 18h4" />
             </svg>
           </button>
-          <button className="inline-flex h-9 w-9 items-center justify-center rounded-full border-2 text-gray-700 hover:bg-brand-subtle transition-all" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
+          <button className="inline-flex items-center justify-center border border-gray-300 text-gray-700 hover:bg-gray-50 h-9 w-9 rounded-full ">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <circle cx="12" cy="5" r="1.5" />
               <circle cx="12" cy="12" r="1.5" />
@@ -97,7 +97,7 @@ export default function ProductCategoriesPage() {
                 <td className="px-4 py-3 text-gray-700">{c.updated_at ? new Date(c.updated_at as string).toLocaleDateString() : "-"}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-2">
-                    <button className="inline-flex h-8 items-center justify-center rounded-lg border-2 px-3 text-sm font-medium hover:bg-brand-subtle transition-all" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }} onClick={() => setOpenEdit(c.id)}>
+                    <button className="inline-flex h-8 items-center justify-center rounded-lg border-2 px-3 text-sm font-medium hover:bg-brand-subtle transition-all" onClick={() => setOpenEdit(c.id)}>
                       Edit
                     </button>
                     <button className="inline-flex h-8 items-center justify-center rounded-lg border border-red-200 px-3 text-sm text-red-600 hover:bg-red-50" onClick={() => setDeleteId(c.id)}>
