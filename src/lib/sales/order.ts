@@ -156,12 +156,12 @@ async function findOrCreateCustomer(
 export async function getCustomerByMessengerId(
   tenantIds: string[],
   messengerSenderId: string
-): Promise<{ id: string; name: string; email: string | null; phone: string | null } | null> {
+): Promise<{ id: string; name: string; email: string | null; phone: string | null; address: string | null } | null> {
   const admin = createSupabaseAdminClient();
 
   const { data } = await admin
     .from("customers")
-    .select("id, name, email, phone")
+    .select("id, name, email, phone, address")
     .in("tenant_id", tenantIds)
     .eq("messenger_sender_id", messengerSenderId)
     .maybeSingle();

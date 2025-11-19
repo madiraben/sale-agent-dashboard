@@ -36,9 +36,24 @@ export default function NewOrderPage() {
   const [message, setMessage] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    supabase.from("customers").select("id,name,phone,email").order("name", { ascending: true }).then(({ data }) => setCustomers((data as any) ?? []));
-    supabase.from("products").select("id,name,price,stock").order("name", { ascending: true }).then(({ data }) => setProducts((data as any) ?? []));
-  }, []);
+    async function loadData() {
+      // Get tenant_id
+      const { data: userTenant } = await supabase
+        .from("user_tenants")
+        .select("tenant_id")
+        .limit(1)
+        .single();
+      
+      const tenantId = userTenant?.tenant_id;
+      
+      if (!tenantId) return;
+      
+      // Load customers and products for this tenant
+      supabase.from("customers").select("id,name,phone,email").eq("tenant_id", tenantId).order("name", { ascending: true }).then(({ data }) => setCustomers((data as any) ?? []));
+      supabase.from("products").select("id,name,price,stock").eq("tenant_id", tenantId).order("name", { ascending: true }).then(({ data }) => setProducts((data as any) ?? []));
+    }
+    loadData();
+  }, [supabase]);
 
   const filteredCustomers = React.useMemo(() => {
     const s = customerSearch.trim().toLowerCase();
@@ -95,11 +110,30 @@ export default function NewOrderPage() {
     }
     setSaving(true);
     try {
+      // Get user's tenant_id first
+      const { data: userTenant } = await supabase
+        .from("user_tenants")
+        .select("tenant_id")
+        .limit(1)
+        .single();
+
+      const tenantId = userTenant?.tenant_id;
+      
+      if (!tenantId) {
+        throw new Error("No tenant_id found for user");
+      }
+
       let customerId = selectedCustomerId;
       if (useNewCustomer) {
         const { data: c, error: cErr } = await supabase
           .from("customers")
-          .insert({ name: newName.trim(), phone: newPhone.trim(), email: newEmail.trim() || null, address: newAddress.trim() || null })
+          .insert({ 
+            name: newName.trim(), 
+            phone: newPhone.trim(), 
+            tenant_id: tenantId,
+            email: newEmail.trim() || null, 
+            address: newAddress.trim() || null 
+          })
           .select("id")
           .single();
         if (cErr || !c) throw cErr;
@@ -107,12 +141,23 @@ export default function NewOrderPage() {
       }
       const { data: order, error: oErr } = await supabase
         .from("orders")
-        .insert({ customer_id: customerId, status: orderStatus, total })
+        .insert({ 
+          customer_id: customerId, 
+          tenant_id: tenantId,
+          status: orderStatus, 
+          total 
+        })
         .select("id")
         .single();
       if (oErr || !order) throw oErr;
       const orderId = (order as any).id;
-      const payload = itemRows.map((r) => ({ order_id: orderId, product_id: r.product_id, qty: r.qty, price: r.price }));
+      const payload = itemRows.map((r) => ({ 
+        order_id: orderId, 
+        product_id: r.product_id, 
+        tenant_id: tenantId,
+        qty: r.qty, 
+        price: r.price 
+      }));
       const { error: iErr } = await supabase.from("order_items").insert(payload);
       if (iErr) throw iErr;
       setMessage("Order placed successfully");

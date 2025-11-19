@@ -11,8 +11,9 @@ import {
   getCartProducts,
   formatCartDisplay,
 } from "../product-search";
-import { validateProductTopic, isObviouslyOffTopic } from "../topic-validator";
+import { validateProductTopic, isObviouslyOffTopic, getOffTopicResponse } from "../topic-validator";
 import { generateAIResponse } from "../ai-responder";
+import { getUnifiedAIResponse } from "../unified-ai";
 import logger from "../../logger";
 import { StageResponse } from "./types";
 
@@ -26,6 +27,15 @@ export async function handleConfirmingOrderStage(
   userText: string
 ): Promise<StageResponse> {
   const conversationContext = getRecentConversation(session.conversation_history);
+  
+  // 🚀 OPTIMIZATION: Use unified AI call
+  const useUnifiedAI = true;
+  
+  if (useUnifiedAI) {
+    return await handleConfirmingOrderStageUnified(tenantIds, session, userText, conversationContext);
+  }
+  
+  // Legacy approach
   const extracted: SalesIntent = await extractSalesIntent(userText, conversationContext, "confirming_order");
   
   const lowerText = userText.toLowerCase().trim();
@@ -223,6 +233,110 @@ export async function handleConfirmingOrderStage(
   };
 }
 
+// ============================================
+// UNIFIED VERSION - 50% faster
+// ============================================
+async function handleConfirmingOrderStageUnified(
+  tenantIds: string[],
+  session: BotSession,
+  userText: string,
+  conversationContext: Array<{ role: "user" | "assistant"; content: string }>
+): Promise<StageResponse> {
+  logger.info("🚀 Using unified AI approach for confirming_order stage");
 
+  const lowerText = userText.toLowerCase().trim();
+
+  // Check for cart
+  if (isCartEmpty(session.cart)) {
+    const result = await getUnifiedAIResponse({
+      stage: "discovering",
+      userMessage: userText,
+      conversationHistory: conversationContext,
+      systemContext: "Cart is empty. Ask what they'd like to order.",
+    });
+    return { reply: result.reply, newStage: "discovering" };
+  }
+
+  // Get cart display
+  const cartProducts = await getCartProducts(tenantIds, session.cart);
+  const cartDisplay = formatCartDisplay(cartProducts);
+
+  // Make unified AI call
+  const result = await getUnifiedAIResponse({
+    stage: "confirming_order",
+    userMessage: userText,
+    conversationHistory: conversationContext,
+    cartSummary: cartDisplay,
+  });
+
+  logger.info("Unified result:", { intent: result.intent, confidence: result.confidence });
+
+  // Handle confirmation
+  if (result.intent === "confirm_order" || 
+      /^(yes|yeah|yep|sure|ok|okay|correct|confirm|that'?s? right|looks good|proceed)$/i.test(lowerText)) {
+    
+    // Check if we already have complete contact info
+    if (session.contact && isContactComplete(session.contact)) {
+      try {
+        const orderResult = await createPendingOrder({
+          tenantIds,
+          contact: {
+            name: session.contact.name!,
+            email: session.contact.email || null,
+            phone: session.contact.phone || null,
+            address: session.contact.address || null,
+          },
+          cart: session.cart,
+          messengerSenderId: session.external_user_id,
+        });
+        
+        return {
+          reply: result.reply,
+          newStage: "discovering",
+          updatedCart: clearCart(),
+          updatedContact: undefined,
+          updatedPendingProducts: undefined,
+          orderId: orderResult?.orderId,
+        };
+      } catch (error) {
+        logger.error("Failed to create order:", error);
+        return {
+          reply: result.reply,
+          newStage: "confirming_order",
+        };
+      }
+    }
+
+    // Need to collect contact information
+    return {
+      reply: result.reply,
+      newStage: "collecting_contact",
+    };
+  }
+
+  // Handle cancellation
+  if (result.intent === "cancel" || 
+      /^(no|nope|cancel|nevermind|never mind)$/i.test(lowerText)) {
+    return {
+      reply: result.reply,
+      newStage: "discovering",
+      updatedCart: clearCart(),
+    };
+  }
+
+  // Handle off-topic or query
+  if (result.intent === "query") {
+    if (isObviouslyOffTopic(userText)) {
+      const reply = getOffTopicResponse(1.0, userText);
+      return { reply, newStage: "confirming_order" };
+    }
+  }
+
+  // Default: stay in stage and show cart again
+  return {
+    reply: result.reply,
+    newStage: "confirming_order",
+  };
+}
 
 

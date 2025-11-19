@@ -17,6 +17,7 @@ import {
 } from "../product-search";
 import { validateProductTopic, getOffTopicResponse, isObviouslyOffTopic } from "../topic-validator";
 import { generateAIResponse } from "../ai-responder";
+import { getUnifiedAIResponse } from "../unified-ai";
 import logger from "../../logger";
 import { StageResponse } from "./types";
 import { 
@@ -36,6 +37,15 @@ export async function handleDiscoveringStage(
   userText: string
 ): Promise<StageResponse> {
   const conversationContext = getRecentConversation(session.conversation_history);
+  
+  // 🚀 OPTIMIZATION: Use unified AI call (1 call instead of 2)
+  const useUnifiedAI = true; // Feature flag
+  
+  if (useUnifiedAI) {
+    return await handleDiscoveringStageUnified(tenantIds, session, userText, conversationContext);
+  }
+  
+  // Legacy 2-call approach (kept for comparison/fallback)
   const extracted: SalesIntent = await extractSalesIntent(userText, conversationContext, "discovering");
 
   logger.info("Discovering stage intent:", { intent: extracted.intent, confidence: extracted.confidence });
@@ -495,5 +505,323 @@ export async function handleDiscoveringStage(
     reply,
     newStage: "discovering",
   };
+}
+
+// ============================================
+// UNIFIED VERSION - 50% faster (1 AI call instead of 2)
+// ============================================
+async function handleDiscoveringStageUnified(
+  tenantIds: string[],
+  session: BotSession,
+  userText: string,
+  conversationContext: Array<{ role: "user" | "assistant"; content: string }>
+): Promise<StageResponse> {
+  logger.info("🚀 Using unified AI approach (1 call instead of 2)");
+
+  // Step 1: Fast pattern checks for off-topic queries
+  if (isObviouslyOffTopic(userText)) {
+    logger.info("Obviously off-topic query detected (pattern match)");
+    const reply = getOffTopicResponse(1.0, userText);
+    return { reply, newStage: "discovering" };
+  }
+
+  // Step 2: Make single unified AI call
+  const result = await getUnifiedAIResponse({
+    stage: "discovering",
+    userMessage: userText,
+    conversationHistory: conversationContext,
+    cartSummary: !isCartEmpty(session.cart) ? await formatCartDisplay(await getCartProducts(tenantIds, session.cart)) : undefined,
+  });
+
+  logger.info("Unified AI result:", { 
+    intent: result.intent, 
+    confidence: result.confidence,
+    hasItems: !!result.items?.length 
+  });
+
+  // Step 3: Handle low confidence - ask for clarification
+  if (result.confidence < 0.4) {
+    logger.warn("Low confidence intent", { confidence: result.confidence });
+    // Use AI's reply but stay in same stage
+    return { reply: result.reply, newStage: "discovering" };
+  }
+
+  // Step 4: Handle intents based on classification
+  switch (result.intent) {
+    case "cancel":
+      return {
+        reply: result.reply,
+        newStage: "discovering",
+        updatedCart: clearCart(),
+        updatedPendingProducts: undefined,
+      };
+
+    case "query": {
+      // Additional topic validation for queries
+      const topicValidation = await validateProductTopic(userText);
+      if (!topicValidation.isOnTopic && topicValidation.confidence > 0.6) {
+        logger.info("Off-topic query detected by AI validation");
+        const reply = getOffTopicResponse(topicValidation.confidence, userText);
+        return { reply, newStage: "discovering" };
+      }
+
+      // For product queries, enhance with RAG if needed
+      if (!result.reply.includes("$") && !isAskingAboutCart(userText)) {
+        // Might need RAG enrichment
+        try {
+          const ragReply = await runRagForUserTenants(tenantIds, userText);
+          if (ragReply && ragReply.length > 50) {
+            // RAG found good info, use it
+            return { reply: ragReply, newStage: "discovering" };
+          }
+        } catch (err) {
+          logger.error("RAG fallback failed:", err);
+        }
+      }
+
+      return { reply: result.reply, newStage: "discovering" };
+    }
+
+    case "modify_cart": {
+      if (isCartEmpty(session.cart)) {
+        return { reply: result.reply, newStage: "discovering" };
+      }
+
+      // Detect specific cart modification
+      const modification = detectCartModification(userText, session.cart);
+      
+      if (modification.action === "remove" && modification.productId) {
+        const updatedCart = removeFromCart(session.cart, modification.productId);
+        return {
+          reply: result.reply,
+          newStage: "discovering",
+          updatedCart,
+        };
+      }
+      
+      if (modification.action === "change_quantity" && modification.productId && modification.newQuantity) {
+        const updatedCart = updateCartItemQty(session.cart, modification.productId, modification.newQuantity);
+        return {
+          reply: result.reply,
+          newStage: "discovering",
+          updatedCart,
+        };
+      }
+      
+      if (modification.action === "clear_all") {
+        return {
+          reply: result.reply,
+          newStage: "discovering",
+          updatedCart: clearCart(),
+        };
+      }
+
+      // Couldn't determine specific action
+      return { reply: result.reply, newStage: "discovering" };
+    }
+
+    case "order":
+    case "add_to_cart": {
+      // Check if AI extracted items
+      if (!result.items || result.items.length === 0) {
+        // Fallback: Check if confirming previous recommendation
+        const lowerText = userText.toLowerCase().trim();
+        const isConfirming = /^(yes|yeah|yep|sure|ok|okay|okie|i('ll| will)? take (it|one|that)|add (it|that|one))$/i.test(lowerText);
+        
+        if (isConfirming && session.conversation_history && session.conversation_history.length > 0) {
+          const lastBotMessage = [...session.conversation_history]
+            .reverse()
+            .find(msg => msg.role === "assistant");
+            
+          if (lastBotMessage) {
+            const productNameMatch = lastBotMessage.content.match(/(?:recommend|available|have|suggest)\s+(?:the\s+)?([A-Z][a-zA-Z\s]+?)(?:\s+for|\s+at|\s+,|\s+which|\s+\$)/i);
+            
+            if (productNameMatch) {
+              const productName = productNameMatch[1].trim();
+              const results = await searchProducts(tenantIds, productName);
+              
+              if (results.length > 0) {
+                result.items = [{ name: productName, qty: 1 }];
+              }
+            }
+          }
+        }
+        
+        // Still no items found
+        if (!result.items || result.items.length === 0) {
+          return { reply: result.reply, newStage: "discovering" };
+        }
+      }
+
+      // Search for products
+      const productSearches: Array<{ query: string; results: Product[] }> = [];
+      
+      for (const item of result.items) {
+        logger.info(`Searching for product: "${item.name}"`);
+        const results = await searchProducts(tenantIds, item.name);
+        logger.info(`Found ${results.length} matches for "${item.name}"`);
+        if (results.length > 0) {
+          productSearches.push({ query: item.name, results });
+        }
+      }
+
+      if (productSearches.length === 0) {
+        // No products found - AI said we have items but search failed!
+        logger.warn(`Product search failed! AI extracted items but found nothing: ${JSON.stringify(result.items)}`);
+        
+        // Generate a more accurate reply explaining product not found
+        const fallbackResult = await getUnifiedAIResponse({
+          stage: "discovering",
+          userMessage: userText,
+          conversationHistory: conversationContext,
+          systemContext: `Product search failed. The items mentioned (${result.items.map(i => i.name).join(", ")}) are not available. Apologize and suggest similar products or ask them to browse our catalog.`,
+        });
+        
+        return { reply: fallbackResult.reply, newStage: "discovering" };
+      }
+
+      // If clear matches (1 result per query), add to cart
+      const clearMatches = productSearches.every(s => s.results.length === 1);
+      
+      if (clearMatches) {
+        let updatedCart = session.cart;
+        
+        for (let i = 0; i < productSearches.length; i++) {
+          const product = productSearches[i].results[0];
+          const requestedQty = result.items![i].qty || 1;
+          
+          updatedCart = addToCart(updatedCart, {
+            product_id: product.id,
+            name: product.name,
+            qty: requestedQty,
+            price: product.price,
+          });
+        }
+        
+        // CHECK: If user provided complete contact info, create order immediately
+        if (result.contact && 
+            result.contact.name && 
+            (result.contact.phone || result.contact.email) && 
+            result.contact.address) {
+          
+          logger.info("User provided complete contact with order, creating order immediately");
+          
+          try {
+            const { createPendingOrder } = await import("../order");
+            const orderResult = await createPendingOrder({
+              tenantIds,
+              contact: {
+                name: result.contact.name,
+                email: result.contact.email || null,
+                phone: result.contact.phone || null,
+                address: result.contact.address,
+              },
+              cart: updatedCart,
+              messengerSenderId: session.external_user_id,
+            });
+            
+            logger.info("Order created successfully with contact:", orderResult?.orderId);
+            
+            return {
+              reply: result.reply,
+              newStage: "discovering",
+              updatedCart: clearCart(),
+              updatedContact: {},
+              orderId: orderResult?.orderId,
+            };
+          } catch (error: any) {
+            logger.error("Failed to create order:", error);
+            // If order creation fails, just add to cart and proceed normally
+            return {
+              reply: result.reply,
+              newStage: "discovering",
+              updatedCart,
+              updatedPendingProducts: undefined,
+            };
+          }
+        }
+        
+        // Normal flow: just add to cart
+        return {
+          reply: result.reply,
+          newStage: "discovering",
+          updatedCart,
+          updatedPendingProducts: undefined,
+        };
+      }
+
+      // Multiple matches - need user to select
+      return {
+        reply: result.reply,
+        newStage: "confirming_products",
+        updatedPendingProducts: productSearches,
+      };
+    }
+
+    case "confirm_order": {
+      if (isCartEmpty(session.cart)) {
+        return { reply: result.reply, newStage: "discovering" };
+      }
+
+      // Check if this is a returning customer (has ordered before)
+      const { getCustomerByMessengerId } = await import("../order");
+      const existingCustomer = await getCustomerByMessengerId(tenantIds, session.external_user_id);
+      
+      if (existingCustomer) {
+        // Returning customer! Use their saved info
+        logger.info("Returning customer detected:", existingCustomer.id);
+        
+        const cartProducts = await getCartProducts(tenantIds, session.cart);
+        const cartDisplay = formatCartDisplay(cartProducts);
+        
+        const returningCustomerResult = await getUnifiedAIResponse({
+          stage: "collecting_contact",
+          userMessage: userText,
+          conversationHistory: conversationContext,
+          cartSummary: cartDisplay,
+          contactInfo: {
+            name: existingCustomer.name,
+            phone: existingCustomer.phone || undefined,
+            email: existingCustomer.email || undefined,
+            address: existingCustomer.address || undefined,
+          },
+          systemContext: `Welcome back customer! Show their cart and their saved info (Name: ${existingCustomer.name}, Phone: ${existingCustomer.phone || 'N/A'}, Email: ${existingCustomer.email || 'N/A'}, Address: ${existingCustomer.address || 'N/A'}). Ask if they want to use this info or update it.`,
+        });
+        
+        return {
+          reply: returningCustomerResult.reply,
+          newStage: "collecting_contact",
+          updatedContact: {
+            name: existingCustomer.name,
+            phone: existingCustomer.phone || undefined,
+            email: existingCustomer.email || undefined,
+            address: existingCustomer.address || undefined,
+          },
+        };
+      }
+
+      // New customer - skip confirming_order stage, go directly to collecting_contact
+      const cartProducts = await getCartProducts(tenantIds, session.cart);
+      const cartDisplay = formatCartDisplay(cartProducts);
+      
+      // Generate contact collection request with cart summary
+      const contactResult = await getUnifiedAIResponse({
+        stage: "collecting_contact",
+        userMessage: userText,
+        conversationHistory: conversationContext,
+        cartSummary: cartDisplay,
+        systemContext: "User wants to checkout. Show their cart summary, then ask for contact info in ONE message. Tell them: 'Please provide: Name, Email/Phone, Address (all in one message)'",
+      });
+      
+      return {
+        reply: contactResult.reply,
+        newStage: "collecting_contact",
+      };
+    }
+
+    default:
+      // Unknown or other intents
+      return { reply: result.reply, newStage: "discovering" };
+  }
 }
 

@@ -40,14 +40,31 @@ export default function Sales() {
   const loadOrders = React.useCallback(async () => {
     setLoading(true);
     try {
+      // Get user's tenant_id first
+      const { data: userTenant } = await supabase
+        .from("user_tenants")
+        .select("tenant_id")
+        .limit(1)
+        .single();
+
+      const tenantId = userTenant?.tenant_id;
+      
+      if (!tenantId) {
+        console.error("No tenant_id found for user");
+        setRows([]);
+        setTotalCount(0);
+        return;
+      }
+
       // Calculate pagination range
       const from = (currentPage - 1) * ITEMS_PER_PAGE;
       const to = from + ITEMS_PER_PAGE - 1;
 
-      // Fetch total count and paginated orders
+      // Fetch total count and paginated orders filtered by tenant_id
       const { data: orders, count } = await supabase
         .from("orders")
-        .select("id, customer_id, date, status, total, customers(name)", { count: "exact" })
+        .select("id, customer_id, date, status, total, customers(name), tenant_id", { count: "exact" })
+        .eq("tenant_id", tenantId)
         .order("date", { ascending: false })
         .range(from, to);
 

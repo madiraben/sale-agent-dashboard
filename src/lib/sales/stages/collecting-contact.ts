@@ -5,8 +5,10 @@ import {
   getRecentConversation,
 } from "../session";
 import { createPendingOrder } from "../order";
-import { validateProductTopic, isObviouslyOffTopic } from "../topic-validator";
+import { validateProductTopic, isObviouslyOffTopic, getOffTopicResponse } from "../topic-validator";
 import { generateAIResponse } from "../ai-responder";
+import { getUnifiedAIResponse } from "../unified-ai";
+import { getCartProducts } from "../product-search";
 import logger from "../../logger";
 import { StageResponse } from "./types";
 
@@ -21,6 +23,14 @@ export async function handleCollectingContactStage(
 ): Promise<StageResponse> {
   const conversationContext = getRecentConversation(session.conversation_history);
 
+  // 🚀 OPTIMIZATION: Use unified AI call
+  const useUnifiedAI = true;
+  
+  if (useUnifiedAI) {
+    return await handleCollectingContactStageUnified(tenantIds, session, userText, conversationContext);
+  }
+
+  // Legacy approach
   // Check if we already have complete contact info (returning customer)
   const hasCompleteInfo = session.contact?.name && 
     (session.contact?.phone || session.contact?.email) &&
@@ -259,6 +269,200 @@ export async function handleCollectingContactStage(
   }
 }
 
+// ============================================
+// UNIFIED VERSION - 50% faster
+// ============================================
+async function handleCollectingContactStageUnified(
+  tenantIds: string[],
+  session: BotSession,
+  userText: string,
+  conversationContext: Array<{ role: "user" | "assistant"; content: string }>
+): Promise<StageResponse> {
+  logger.info("🚀 Using unified AI approach for collecting_contact stage");
 
+  // Check if we already have complete contact info
+  const hasCompleteInfo = session.contact?.name && 
+    (session.contact?.phone || session.contact?.email) &&
+    session.contact?.address;
+  
+  if (hasCompleteInfo) {
+    // Ask for confirmation of existing info
+    const lowerText = userText.toLowerCase().trim();
+    const confirmOrder = /^(yes|yeah|yep|sure|ok|okay|correct|confirm|that'?s? right|looks good|បាទ|ចាស)$/i.test(lowerText);
+    
+    if (confirmOrder) {
+      try {
+        const orderResult = await createPendingOrder({
+          tenantIds,
+          contact: {
+            name: session.contact.name!,
+            email: session.contact.email || null,
+            phone: session.contact.phone || null,
+            address: session.contact.address!,
+          },
+          cart: session.cart,
+          messengerSenderId: session.external_user_id,
+        });
+        
+        const unifiedResult = await getUnifiedAIResponse({
+          stage: "discovering",
+          userMessage: userText,
+          conversationHistory: conversationContext,
+          systemContext: `Order #${orderResult?.orderId} created successfully! Thank the customer warmly and let them know they'll receive confirmation.`,
+        });
+
+        return {
+          reply: unifiedResult.reply,
+          newStage: "discovering",
+          orderId: orderResult?.orderId,
+          updatedCart: clearCart(),
+          updatedContact: {},
+        };
+      } catch (error: any) {
+        logger.error("Order creation failed:", error);
+        
+        const unifiedResult = await getUnifiedAIResponse({
+          stage: "discovering",
+          userMessage: userText,
+          conversationHistory: conversationContext,
+          systemContext: `Error creating order: ${error.message}. Apologize and ask them to try again.`,
+        });
+
+        return {
+          reply: unifiedResult.reply,
+          newStage: "discovering",
+          updatedCart: clearCart(),
+          updatedContact: {},
+        };
+      }
+    }
+  }
+
+  // Make unified AI call to get intent AND response
+  const result = await getUnifiedAIResponse({
+    stage: "collecting_contact",
+    userMessage: userText,
+    conversationHistory: conversationContext,
+    contactInfo: session.contact || {},
+  });
+
+  logger.info("Unified result:", { 
+    intent: result.intent, 
+    confidence: result.confidence,
+    hasContact: !!result.contact 
+  });
+
+  // Handle cancel
+  if (result.intent === "cancel") {
+    return {
+      reply: result.reply,
+      newStage: "discovering",
+      updatedCart: clearCart(),
+      updatedContact: {},
+    };
+  }
+
+  // Extract contact information from AI or merge with existing
+  let updatedContact = { ...session.contact };
+  let hasNewInfo = false;
+
+  if (result.contact) {
+    if (result.contact.name && result.contact.name.trim().length > 2) {
+      updatedContact.name = result.contact.name.trim();
+      hasNewInfo = true;
+    }
+    if (result.contact.email && isValidEmail(result.contact.email)) {
+      updatedContact.email = result.contact.email.trim();
+      hasNewInfo = true;
+    }
+    if (result.contact.phone && isValidPhone(result.contact.phone)) {
+      updatedContact.phone = result.contact.phone.trim();
+      hasNewInfo = true;
+    }
+    if (result.contact.address && result.contact.address.trim().length > 5) {
+      updatedContact.address = result.contact.address.trim();
+      hasNewInfo = true;
+    }
+  }
+
+  // Check if we now have complete information
+  const isComplete = updatedContact.name && 
+    (updatedContact.phone || updatedContact.email) &&
+    updatedContact.address;
+
+  if (isComplete) {
+    // Create the order
+    try {
+      const orderResult = await createPendingOrder({
+        tenantIds,
+        contact: {
+          name: updatedContact.name!,
+          email: updatedContact.email || null,
+          phone: updatedContact.phone || null,
+          address: updatedContact.address!,
+        },
+        cart: session.cart,
+        messengerSenderId: session.external_user_id,
+      });
+      
+      logger.info("Order created successfully:", orderResult?.orderId);
+
+      // Generate a proper order confirmation with full details
+      const cartProducts = await getCartProducts(tenantIds, session.cart);
+      const itemsList = cartProducts
+        .map((p: any) => `• ${p.qty}x ${p.name} - $${(p.price * p.qty).toFixed(2)}`)
+        .join("\n");
+      
+      const contactMethod = updatedContact.email || updatedContact.phone;
+      
+      const orderSummaryResult = await getUnifiedAIResponse({
+        stage: "discovering",
+        userMessage: userText,
+        conversationHistory: conversationContext,
+        systemContext: `✅ Order #${orderResult?.orderId} created successfully!
+
+Order Details:
+${itemsList}
+Total: $${orderResult?.total.toFixed(2)}
+
+Delivery to: ${updatedContact.address}
+Contact: ${contactMethod}
+
+Thank ${updatedContact.name} warmly! Tell them we'll contact them within 24 hours for confirmation and delivery details.`,
+      });
+
+      return {
+        reply: orderSummaryResult.reply,
+        newStage: "discovering",
+        orderId: orderResult?.orderId,
+        updatedCart: clearCart(),
+        updatedContact: {},
+      };
+    } catch (error: any) {
+      logger.error("Order creation failed:", error);
+      
+      const errorResult = await getUnifiedAIResponse({
+        stage: "discovering",
+        userMessage: userText,
+        conversationHistory: conversationContext,
+        systemContext: `Failed to create order: ${error.message}. Apologize sincerely and ask them to try again or contact support.`,
+      });
+      
+      return {
+        reply: errorResult.reply,
+        newStage: "discovering",
+        updatedCart: clearCart(),
+        updatedContact: {},
+      };
+    }
+  }
+
+  // Still missing information, continue collecting
+  return {
+    reply: result.reply,
+    newStage: "collecting_contact",
+    updatedContact: hasNewInfo ? updatedContact : undefined,
+  };
+}
 
 

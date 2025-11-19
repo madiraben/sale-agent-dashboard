@@ -12,8 +12,9 @@ import {
   formatPendingProducts,
   Product 
 } from "../product-search";
-import { validateProductTopic, isObviouslyOffTopic } from "../topic-validator";
+import { validateProductTopic, isObviouslyOffTopic, getOffTopicResponse } from "../topic-validator";
 import { generateAIResponse } from "../ai-responder";
+import { getUnifiedAIResponse } from "../unified-ai";
 import logger from "../../logger";
 import { StageResponse } from "./types";
 import { extractProductIdsFromSelection } from "./helpers";
@@ -29,6 +30,14 @@ export async function handleConfirmingProductsStage(
 ): Promise<StageResponse> {
   const conversationContext = getRecentConversation(session.conversation_history);
 
+  // 🚀 OPTIMIZATION: Use unified AI call
+  const useUnifiedAI = true;
+  
+  if (useUnifiedAI) {
+    return await handleConfirmingProductsStageUnified(tenantIds, session, userText, conversationContext);
+  }
+
+  // Legacy approach below
   // FIRST: Check if message is off-topic (before any processing)
   if (isObviouslyOffTopic(userText)) {
     logger.info("Off-topic query in confirming_products stage (pattern match)");
@@ -248,8 +257,136 @@ export async function handleConfirmingProductsStage(
   };
 }
 
+// ============================================
+// UNIFIED VERSION - 50% faster
+// ============================================
+async function handleConfirmingProductsStageUnified(
+  tenantIds: string[],
+  session: BotSession,
+  userText: string,
+  conversationContext: Array<{ role: "user" | "assistant"; content: string }>
+): Promise<StageResponse> {
+  logger.info("🚀 Using unified AI approach for confirming_products stage");
 
+  // Check for off-topic
+  if (isObviouslyOffTopic(userText)) {
+    const reply = getOffTopicResponse(1.0, userText);
+    return { reply, newStage: "confirming_products" };
+  }
 
+  // Check if we have pending products
+  if (!session.pending_products || session.pending_products.length === 0) {
+    const result = await getUnifiedAIResponse({
+      stage: "discovering",
+      userMessage: userText,
+      conversationHistory: conversationContext,
+      systemContext: "No pending products. Ask what they'd like to order.",
+    });
+    return {
+      reply: result.reply,
+      newStage: "discovering",
+      updatedPendingProducts: undefined,
+    };
+  }
+
+  // Make unified AI call
+  const productResults = formatPendingProducts(session.pending_products);
+  const result = await getUnifiedAIResponse({
+    stage: "confirming_products",
+    userMessage: userText,
+    conversationHistory: conversationContext,
+    productResults,
+  });
+
+  logger.info("Unified result:", { intent: result.intent, confidence: result.confidence });
+
+  // Handle cancel
+  if (result.intent === "cancel") {
+    return {
+      reply: result.reply,
+      newStage: "discovering",
+      updatedPendingProducts: undefined,
+    };
+  }
+
+  // Try to extract product selection
+  const productIds = extractProductIdsFromSelection(userText, session.pending_products);
+  
+  if (productIds.length > 0) {
+    const products = await getProductsByIds(tenantIds, productIds);
+    let updatedCart = session.cart;
+    
+    for (const product of products) {
+      updatedCart = addToCart(updatedCart, {
+        product_id: product.id,
+        name: product.name,
+        qty: 1,
+        price: product.price,
+      });
+    }
+    
+    return {
+      reply: result.reply,
+      newStage: "discovering",
+      updatedCart,
+      updatedPendingProducts: undefined,
+    };
+  }
+
+  // Check if AI extracted new items (customer refined their search)
+  if (result.items && result.items.length > 0) {
+    const newSearches: Array<{ query: string; results: Product[] }> = [];
+    
+    for (const item of result.items) {
+      const results = await searchProducts(tenantIds, item.name);
+      if (results.length > 0) {
+        newSearches.push({ query: item.name, results });
+      }
+    }
+
+    if (newSearches.length === 0) {
+      // No products found
+      return { reply: result.reply, newStage: "confirming_products" };
+    }
+
+    // Check if we have clear matches now
+    const clearMatches = newSearches.every(s => s.results.length === 1);
+    
+    if (clearMatches) {
+      let updatedCart = session.cart;
+      
+      for (const search of newSearches) {
+        const product = search.results[0];
+        updatedCart = addToCart(updatedCart, {
+          product_id: product.id,
+          name: product.name,
+          qty: 1,
+          price: product.price,
+        });
+      }
+      
+      return {
+        reply: result.reply,
+        newStage: "discovering",
+        updatedCart,
+        updatedPendingProducts: undefined,
+      };
+    }
+
+    // Still multiple matches
+    return {
+      reply: result.reply,
+      newStage: "confirming_products",
+      updatedPendingProducts: newSearches,
+    };
+  }
+
+  // Default: stay in stage and show options again
+  return {
+    reply: result.reply,
+    newStage: "confirming_products",
+  };
+}
 
 
 

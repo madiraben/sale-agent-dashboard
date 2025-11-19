@@ -6,7 +6,8 @@ export type StageResponse = {
   newStage: BotSession["stage"];
   updatedCart?: CartItem[];
   updatedPendingProducts?: Array<{ query: string; results: Product[] }>;
-  updatedContact?: { name?: string; email?: string; phone?: string };
+  updatedContact?: { name?: string; email?: string; phone?: string; address?: string };
+  orderId?: string;
 };
 
 

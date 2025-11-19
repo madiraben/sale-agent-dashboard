@@ -116,6 +116,32 @@ export default function Detail() {
       toast.error("Unable to save: tenant not found");
       return;
     }
+    
+    // Validate SKU is not empty
+    if (!sku.trim()) {
+      toast.error("SKU is required");
+      return;
+    }
+    
+    // Check if SKU is already used by another product
+    const { data: existingProduct, error: checkError } = await supabase
+      .from("products")
+      .select("id, sku")
+      .eq("sku", sku.trim())
+      .neq("id", id)
+      .maybeSingle();
+    
+    if (checkError) {
+      logger.error("Error checking SKU uniqueness: %o", checkError);
+      toast.error("Failed to validate SKU");
+      return;
+    }
+    
+    if (existingProduct) {
+      toast.error(`SKU "${sku.trim()}" is already used by another product. Please use a unique SKU.`);
+      return;
+    }
+    
     setSaving(true);
     try {
       let finalImageUrl = imageUrl;
@@ -147,7 +173,15 @@ export default function Detail() {
           image_url: finalImageUrl,
         })
         .eq("id", id);
-      if (error) throw error;
+      
+      if (error) {
+        // Handle unique constraint violation
+        if (error.code === '23505') {
+          logger.error("SKU duplicate detected: %s", error.message);
+          throw new Error(`SKU "${sku.trim()}" is already in use. Please use a unique SKU.`);
+        }
+        throw error;
+      }
 
       // Regenerate embedding if relevant fields changed
       if (originalProduct) {

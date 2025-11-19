@@ -311,13 +311,55 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
   }
 
   async function onSave() {
-    if (!name || !sku) return onClose();
+    if (!name || !sku) {
+      toast.error("Name and SKU are required");
+      return;
+    }
     
     // Ensure tenantId is loaded
     if (!tenantId) {
       logger.error("Cannot save product: tenantId not loaded");
       toast.error("Please wait a moment and try again");
       return;
+    }
+    
+    // Check if SKU is already in use (for both add and edit modes)
+    if (mode === "add") {
+      const { data: existingSKU, error: checkError } = await supabase
+        .from("products")
+        .select("id, sku")
+        .eq("sku", sku.trim())
+        .maybeSingle();
+      
+      if (checkError && checkError.code !== 'PGRST116') {
+        logger.error("Error checking SKU uniqueness: %o", checkError);
+        toast.error("Failed to validate SKU");
+        return;
+      }
+      
+      if (existingSKU) {
+        toast.error(`SKU "${sku.trim()}" is already in use. Please use a unique SKU.`);
+        return;
+      }
+    } else if (mode === "edit" && editing) {
+      // Check if SKU is used by another product (not the current one)
+      const { data: existingSKU, error: checkError } = await supabase
+        .from("products")
+        .select("id, sku")
+        .eq("sku", sku.trim())
+        .neq("id", editing.id)
+        .maybeSingle();
+      
+      if (checkError && checkError.code !== 'PGRST116') {
+        logger.error("Error checking SKU uniqueness: %o", checkError);
+        toast.error("Failed to validate SKU");
+        return;
+      }
+      
+      if (existingSKU) {
+        toast.error(`SKU "${sku.trim()}" is already used by another product. Please use a unique SKU.`);
+        return;
+      }
     }
     
     setSaving(true);
@@ -478,7 +520,12 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
       logger.info("Product insert result: %o", inserted);
       if (error) {
         logger.error("Failed to insert product: %s", error);
-        toast.error(`Failed to create product: ${error.message}`);
+        // Handle unique constraint violation
+        if (error.code === '23505') {
+          toast.error(`SKU "${sku}" is already in use. Please use a unique SKU.`);
+        } else {
+          toast.error(`Failed to create product: ${error.message}`);
+        }
         setSaving(false);
         return;
       }
@@ -518,7 +565,12 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
       
       if (updateError) {
         logger.error("Failed to update product: %s", updateError);
-        toast.error(`Failed to update product: ${updateError.message}`);
+        // Handle unique constraint violation
+        if (updateError.code === '23505') {
+          toast.error(`SKU "${sku}" is already in use. Please use a unique SKU.`);
+        } else {
+          toast.error(`Failed to update product: ${updateError.message}`);
+        }
         setSaving(false);
         return;
       }
