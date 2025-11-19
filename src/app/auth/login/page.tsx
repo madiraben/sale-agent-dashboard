@@ -63,6 +63,19 @@ export default function Page() {
         toast.error(error.message || "Sign in failed");
         return;
       }
+      
+      // Ensure user has a tenant (for users created before multi-tenancy)
+      const { data: membership } = await supabase
+        .from("user_tenants")
+        .select("tenant_id")
+        .limit(1)
+        .single();
+      
+      if (!membership) {
+        // Bootstrap tenant for this user
+        await (supabase as any).rpc("bootstrap_tenant", { p_name: "My Workspace" });
+      }
+      
       toast.success("Signed in successfully");
       router.replace("/dashboard");
     } finally {

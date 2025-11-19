@@ -22,6 +22,7 @@ export default function Detail() {
   const [saving, setSaving] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
+  const [tenantId, setTenantId] = React.useState<string | null>(null);
 
   const [name, setName] = React.useState("");
   const [sku, setSku] = React.useState("");
@@ -44,6 +45,18 @@ export default function Detail() {
     description: string;
     imageUrl: string | null;
   } | null>(null);
+
+  // Load current user's tenant_id
+  React.useEffect(() => {
+    supabase
+      .from("user_tenants")
+      .select("tenant_id")
+      .limit(1)
+      .single()
+      .then(({ data }) => {
+        if (data) setTenantId((data as any).tenant_id);
+      });
+  }, [supabase]);
 
   React.useEffect(() => {
     if (!id) return setLoading(false);
@@ -99,14 +112,26 @@ export default function Detail() {
 
   async function onSave() {
     if (!id) return;
+    if (!tenantId) {
+      toast.error("Unable to save: tenant not found");
+      return;
+    }
     setSaving(true);
     try {
       let finalImageUrl = imageUrl;
       if (imageFile) {
-        const path = `${id}/${Date.now()}_${imageFile.name}`;
+        // Organize images by tenant: {tenant_id}/{product_id}/{timestamp}_{filename}
+        const path = `${tenantId}/${id}/${Date.now()}_${imageFile.name}`;
         const { error: upErr } = await supabase.storage.from("product-images").upload(path, imageFile, { upsert: true });
-        if (upErr) throw upErr;
+        if (upErr) {
+          logger.error("Image upload failed: %s", upErr);
+          throw new Error(`Image upload failed: ${upErr.message}`);
+        }
         const { data: pub } = supabase.storage.from("product-images").getPublicUrl(path);
+        if (!pub?.publicUrl) {
+          logger.error("Failed to get public URL for uploaded image");
+          throw new Error("Failed to get public URL for uploaded image");
+        }
         finalImageUrl = pub.publicUrl;
       }
       const { error } = await supabase
@@ -136,24 +161,88 @@ export default function Detail() {
         const changedImage = finalImageUrl !== originalProduct.imageUrl;
         
         if (changedText || changedImage) {
-          // Attempt to regenerate embeddings in the background
-          // Strategy: Try text-only first (more reliable), skip image embeddings for now
+          // Attempt to regenerate embeddings with both text and image
           try {
             logger.info("Regenerating embeddings for product: %s", id);
-            logger.info("Using text-only embedding (image embeddings disabled due to Vertex AI limitations)");
+            
+            // Process image if we have a new one
+            let imageBase64: string | undefined;
+            if (imageFile) {
+              logger.info("Processing image for embedding...");
+              imageBase64 = await new Promise<string>((resolve, reject) => {
+                const img = new Image();
+                const reader = new FileReader();
+                
+                reader.onload = (e) => {
+                  img.onload = () => {
+                    // Resize to max 512x512 (Vertex AI requirement)
+                    const MAX_SIZE = 512;
+                    let width = img.width;
+                    let height = img.height;
+                    
+                    if (width > height && width > MAX_SIZE) {
+                      height = (height * MAX_SIZE) / width;
+                      width = MAX_SIZE;
+                    } else if (height > MAX_SIZE) {
+                      width = (width * MAX_SIZE) / height;
+                      height = MAX_SIZE;
+                    }
+                    
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    if (!ctx) {
+                      reject(new Error("Failed to get canvas context"));
+                      return;
+                    }
+                    
+                    ctx.drawImage(img, 0, 0, width, height);
+                    
+                    // Convert to JPEG with quality 0.8
+                    const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+                    logger.info("Image processed: %dx%d, base64 length: %d", width, height, base64.length);
+                    resolve(base64);
+                  };
+                  img.onerror = () => reject(new Error("Failed to load image"));
+                  img.src = e.target?.result as string;
+                };
+                reader.onerror = () => reject(new Error("Failed to read image file"));
+                reader.readAsDataURL(imageFile);
+              });
+            }
             
             const textOnlyRes = await fetch("/api/embeddings/multimodal", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ text: composeEmbeddingText() }),
+              body: JSON.stringify({ 
+                text: composeEmbeddingText(),
+                ...(imageBase64 ? { imageBase64 } : {})
+              }),
             });
             
             const data = (await textOnlyRes.json()) as MultimodalEmbeddingResponse;
             logger.info("Embedding API response:", { status: textOnlyRes.status, data });
             
             if (textOnlyRes.ok && (data.embedding || data.textEmbedding || data.imageEmbedding)) {
-              const combined = data.embedding ?? data.textEmbedding ?? data.imageEmbedding;
-              await supabase.from("products").update({ embedding: combined }).eq("id", id);
+              // Use textEmbedding as primary
+              const textEmb = data.textEmbedding ?? data.embedding ?? data.imageEmbedding;
+              const imgEmb = data.imageEmbedding;
+              const metadata = {
+                hasTextEmbedding: !!data.textEmbedding,
+                hasImageEmbedding: !!data.imageEmbedding,
+                hasCombinedEmbedding: !!data.embedding,
+                usedRegion: data.usedRegion,
+                generatedAt: new Date().toISOString(),
+              };
+              
+              await supabase.from("products").update({ 
+                embedding: textEmb,
+                image_embedding: imgEmb || null,
+                embedding_metadata: metadata
+              }).eq("id", id);
+              
+              logger.info("Updated embeddings - text: %s, image: %s", !!textEmb, !!imgEmb);
               toast.success("Product and embeddings updated successfully");
             } else if (!textOnlyRes.ok) {
               const errorMsg = data.error || "Unknown error";

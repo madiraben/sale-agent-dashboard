@@ -29,7 +29,7 @@ export default function Profile() {
 
   async function onLogoutConfirmed() {
     await supabase.auth.signOut();
-    router.replace("/login");
+    router.replace("/auth/login");
   }
 
   return (

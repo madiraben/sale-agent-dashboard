@@ -34,10 +34,16 @@ export default function Product() {
   async function loadProducts() {
     const { data, error } = await supabase
       .from("products")
-      .select("id,name,sku,size,price,stock,category_id,product_categories(name),image_url,description")
+      .select("id,name,sku,size,price,stock,category_id,product_categories!category_id(name),image_url,description")
       .order("name", { ascending: true });
-    if (!error && data) setRows((data as any));
-    if (error) toast.error(error.message as string || "Failed to load products");
+    
+    if (error) {
+      logger.error("Failed to load products: %o", error);
+      toast.error(error.message as string || "Failed to load products");
+    } else if (data) {
+      logger.info("Loaded %d products", data.length);
+      setRows((data as any));
+    }
   }
 
   React.useEffect(() => {
@@ -159,11 +165,26 @@ export default function Product() {
         onConfirm={async () => {
           if (!deleteId) { setDeleting(false); setDeleteId(null); return; }
           setDeleting(true);
-          const { error } = await supabase.from("products").delete().eq("id", deleteId);
+          
+          const { data, error, count } = await supabase
+            .from("products")
+            .delete()
+            .eq("id", deleteId)
+            .select();
+          
+          logger.info("Delete result - data: %o, error: %o, count: %o", data, error, count);
+          
           setDeleting(false);
           setDeleteId(null);
-          if (error) toast.error(error.message as string || "Failed to delete product");
-          else {
+          
+          if (error) {
+            logger.error("Delete failed with error: %o", error);
+            toast.error(error.message as string || "Failed to delete product");
+          } else if (!data || data.length === 0) {
+            logger.error("DELETE returned 0 rows - RLS policy blocked it!");
+            toast.error("Failed to delete: Permission denied (check tenant status)");
+          } else {
+            logger.info("Product deleted successfully");
             toast.success("Product deleted successfully");
             loadProducts();
           }
@@ -182,6 +203,8 @@ type DrawerProps = {
 function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
   const supabase = React.useMemo(() => createSupabaseBrowserClient(), []);
   const [editing, setEditing] = React.useState<null | (Product & { image_url?: string })>(null);
+  const [tenantId, setTenantId] = React.useState<string | null>(null);
+  
   React.useEffect(() => {
     if (mode === "edit" && productId) {
       supabase
@@ -192,6 +215,18 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
         .then(({ data }) => setEditing(data as any));
     }
   }, [mode, productId]);
+
+  // Load current user's tenant_id
+  React.useEffect(() => {
+    supabase
+      .from("user_tenants")
+      .select("tenant_id")
+      .limit(1)
+      .single()
+      .then(({ data }) => {
+        if (data) setTenantId((data as any).tenant_id);
+      });
+  }, []);
 
   const [name, setName] = React.useState(editing?.name ?? "");
   const [sku, setSku] = React.useState(editing?.sku ?? "");
@@ -222,15 +257,43 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
   }, []);
 
   async function uploadImageIfNeeded(productId: string): Promise<string | undefined> {
-    if (!imageFile) return editing?.image_url as any;
-    const filePath = `${productId}-${Date.now()}-${imageFile.name}`;
-    const { error: upErr } = await supabase.storage.from("product-images").upload(filePath, imageFile, {
+    if (!imageFile) {
+      logger.info("No image file to upload, returning existing URL");
+      return editing?.image_url as any;
+    }
+    if (!tenantId) {
+      logger.error("Tenant ID not available for image upload");
+      toast.error("Unable to upload image: tenant not found");
+      return editing?.image_url as any;
+    }
+    
+    // Organize images by tenant: {tenant_id}/{product_id}/{timestamp}_{filename}
+    const filePath = `${tenantId}/${productId}/${Date.now()}_${imageFile.name}`;
+    logger.info("Uploading image to path: %s", filePath);
+    
+    const { error: upErr, data: uploadData } = await supabase.storage.from("product-images").upload(filePath, imageFile, {
       cacheControl: "3600",
       upsert: false,
     });
-    if (upErr) return editing?.image_url as any;
+    
+    if (upErr) {
+      logger.error("Image upload failed: %s", upErr);
+      toast.error(`Image upload failed: ${upErr.message}`);
+      return editing?.image_url as any;
+    }
+    
+    logger.info("Image uploaded successfully, data: %o", uploadData);
     const { data: urlData } = supabase.storage.from("product-images").getPublicUrl(filePath);
-    return urlData?.publicUrl;
+    logger.info("Public URL data: %o", urlData);
+    
+    if (!urlData?.publicUrl) {
+      logger.error("Failed to get public URL for uploaded image");
+      toast.error("Failed to get public URL for uploaded image");
+      return editing?.image_url as any;
+    }
+    
+    logger.info("Returning public URL: %s", urlData.publicUrl);
+    return urlData.publicUrl;
   }
 
   function composeEmbeddingText(): string {
@@ -249,53 +312,198 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
 
   async function onSave() {
     if (!name || !sku) return onClose();
+    
+    // Ensure tenantId is loaded
+    if (!tenantId) {
+      logger.error("Cannot save product: tenantId not loaded");
+      toast.error("Please wait a moment and try again");
+      return;
+    }
+    
     setSaving(true);
     if (mode === "add") {
-      // 1) Insert base fields
-      const { data: inserted, error } = await supabase
-        .from("products")
-        .insert({ name, sku, size, category_id: categoryId || null, price: Number(price || 0), stock: Number(stock || 0), description })
-        .select("id")
-        .single();
-      if (!error && inserted) {
-        const publicUrl = await uploadImageIfNeeded(inserted.id);
-        if (publicUrl) {
-          await supabase.from("products").update({ image_url: publicUrl }).eq("id", inserted.id);
+      // BETTER APPROACH: Create product with temp ID first to upload image, then insert with image_url
+      const tempProductId = crypto.randomUUID();
+      
+      logger.info("=== ADD PRODUCT DEBUG ===");
+      logger.info("imageFile: %o", imageFile);
+      logger.info("tenantId: %s", tenantId);
+      logger.info("tempProductId: %s", tempProductId);
+      
+      // 1) Upload image first if provided
+      let imageUrl: string | undefined;
+      if (imageFile) {
+        if (!tenantId) {
+          logger.error("tenantId is null, cannot upload image!");
+          toast.error("Tenant not loaded, please refresh and try again");
+          setSaving(false);
+          return;
         }
-
-        // 2) Build embedding payload and call API
-        // ============================================================
-        // Ensure Google Cloud credentials are configured for embeddings
-        // ============================================================
-        try {
-          let imageBase64: string | undefined;
-          if (imageFile) {
-            imageBase64 = await new Promise<string>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onload = () => {
-                const result = reader.result as string;
-                const base64 = result.split(",")[1] || "";
+        
+        const filePath = `${tenantId}/${tempProductId}/${Date.now()}_${imageFile.name}`;
+        logger.info("Uploading image to path: %s", filePath);
+        
+        const { error: upErr, data: uploadData } = await supabase.storage
+          .from("product-images")
+          .upload(filePath, imageFile, { cacheControl: "3600", upsert: false });
+        
+        if (upErr) {
+          logger.error("Image upload failed: %s", upErr);
+          toast.error(`Image upload failed: ${upErr.message}`);
+        } else {
+          logger.info("Image uploaded successfully, uploadData: %o", uploadData);
+          const { data: urlData } = supabase.storage.from("product-images").getPublicUrl(filePath);
+          imageUrl = urlData?.publicUrl;
+          logger.info("Image URL retrieved: %s", imageUrl);
+        }
+      } else {
+        logger.info("No image file selected");
+      }
+      
+      // 2) Generate embeddings BEFORE insert
+      let embedding: number[] | undefined;
+      let imageEmbedding: number[] | undefined;
+      let embeddingMetadata: any = undefined;
+      let imageBase64: string | undefined;
+      
+      try {
+        logger.info("=== EMBEDDING GENERATION START ===");
+        const embeddingText = composeEmbeddingText();
+        logger.info("Embedding text: %s", embeddingText);
+        
+        // Process image for Vertex AI if we have one
+        if (imageFile) {
+          logger.info("Processing image for embedding...");
+          imageBase64 = await new Promise<string>((resolve, reject) => {
+            const img = new Image();
+            const reader = new FileReader();
+            
+            reader.onload = (e) => {
+              img.onload = () => {
+                // Resize to max 512x512 (Vertex AI requirement)
+                const MAX_SIZE = 512;
+                let width = img.width;
+                let height = img.height;
+                
+                if (width > height && width > MAX_SIZE) {
+                  height = (height * MAX_SIZE) / width;
+                  width = MAX_SIZE;
+                } else if (height > MAX_SIZE) {
+                  width = (width * MAX_SIZE) / height;
+                  height = MAX_SIZE;
+                }
+                
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                  reject(new Error("Failed to get canvas context"));
+                  return;
+                }
+                
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // Convert to JPEG with quality 0.8
+                const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+                logger.info("Image processed: %dx%d, base64 length: %d", width, height, base64.length);
                 resolve(base64);
               };
-              reader.onerror = () => reject(new Error("Failed to convert image to base64"));
-              reader.readAsDataURL(imageFile);
-            });
-          }
-
-          const res = await fetch("/api/embeddings/multimodal", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              text: composeEmbeddingText(),
-              ...(imageBase64 ? { imageBase64 } : {}),
-            }),
+              img.onerror = () => reject(new Error("Failed to load image"));
+              img.src = e.target?.result as string;
+            };
+            reader.onerror = () => reject(new Error("Failed to read image file"));
+            reader.readAsDataURL(imageFile);
           });
-          const data = (await res.json()) as MultimodalEmbeddingResponse;
-          if (res.ok && (data.embedding || data.textEmbedding || data.imageEmbedding)) {
-            const combined = data.embedding ?? data.textEmbedding ?? data.imageEmbedding;
-            await supabase.from("products").update({ embedding: combined }).eq("id", inserted.id);
-          }
-        } catch {}
+        }
+        
+        logger.info("Calling /api/embeddings/multimodal with %s...", imageBase64 ? "text + image" : "text only");
+        const embRes = await fetch("/api/embeddings/multimodal", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: embeddingText,
+            ...(imageBase64 ? { imageBase64 } : {}),
+          }),
+        });
+        
+        logger.info("Embedding API response status: %d", embRes.status);
+        const embData = (await embRes.json()) as MultimodalEmbeddingResponse;
+        logger.info("Embedding API response data: %o", embData);
+        
+        if (embRes.ok && (embData.embedding || embData.textEmbedding || embData.imageEmbedding)) {
+          // Use textEmbedding as primary (more accurate for text search)
+          embedding = embData.textEmbedding ?? embData.embedding ?? embData.imageEmbedding;
+          // Store image embedding separately if available
+          imageEmbedding = embData.imageEmbedding;
+          // Store full metadata for debugging
+          embeddingMetadata = {
+            hasTextEmbedding: !!embData.textEmbedding,
+            hasImageEmbedding: !!embData.imageEmbedding,
+            hasCombinedEmbedding: !!embData.embedding,
+            usedRegion: embData.usedRegion,
+            generatedAt: new Date().toISOString(),
+          };
+          logger.info("Embeddings generated - text: %d, image: %d", 
+            embData.textEmbedding?.length || 0, 
+            embData.imageEmbedding?.length || 0
+          );
+        } else {
+          logger.error("No embedding returned from API. Response: %o", embData);
+        }
+      } catch (embErr) {
+        logger.error("Failed to generate embeddings: %o", embErr);
+      }
+      
+      // 3) Insert product with ALL fields including embeddings
+      const { data: inserted, error } = await supabase
+        .from("products")
+        .insert({ 
+          id: tempProductId,
+          name, 
+          sku, 
+          size, 
+          category_id: categoryId || null, 
+          price: Number(price || 0), 
+          stock: Number(stock || 0), 
+          description,
+          image_url: imageUrl || null,
+          embedding: embedding || null,
+          image_embedding: imageEmbedding || null,
+          embedding_metadata: embeddingMetadata || null
+        })
+        .select("id, tenant_id, image_url, embedding, image_embedding, embedding_metadata")
+        .single();
+      
+      logger.info("Product insert result: %o", inserted);
+      if (error) {
+        logger.error("Failed to insert product: %s", error);
+        toast.error(`Failed to create product: ${error.message}`);
+        setSaving(false);
+        return;
+      }
+      if (inserted) {
+        const hasTextEmb = !!inserted.embedding;
+        const hasImageEmb = !!inserted.image_embedding;
+        const hasMetadata = !!inserted.embedding_metadata;
+        
+        logger.info("Product created - Text embedding: %s, Image embedding: %s, Metadata: %s", 
+          hasTextEmb ? "✅" : "❌", 
+          hasImageEmb ? "✅" : "❌", 
+          hasMetadata ? "✅" : "❌"
+        );
+        
+        if (hasTextEmb && hasImageEmb) {
+          logger.info("✅ Product created WITH both text and image embeddings!");
+          toast.success("Product created with full embeddings");
+        } else if (hasTextEmb) {
+          logger.info("⚠️ Product created with text embedding only");
+          toast.success("Product created with text embeddings");
+        } else {
+          logger.warn("⚠️ Product created but embeddings are null");
+          toast.warning("Product created but embeddings generation failed");
+        }
+
       }
       setSaving(false);
       onClose();
@@ -303,10 +511,17 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
     }
     if (mode === "edit" && editing) {
       const publicUrl = await uploadImageIfNeeded(editing.id);
-      await supabase
+      const { error: updateError } = await supabase
         .from("products")
         .update({ name, sku, size, category_id: categoryId || null, price: Number(price || 0), stock: Number(stock || 0), description, image_url: publicUrl ?? editing.image_url })
         .eq("id", editing.id);
+      
+      if (updateError) {
+        logger.error("Failed to update product: %s", updateError);
+        toast.error(`Failed to update product: ${updateError.message}`);
+        setSaving(false);
+        return;
+      }
 
       // regenerate embedding if text (name, sku, size, category, price, description) or image changed
       const changedText =
@@ -342,6 +557,7 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
           toast.error("Embedding regeneration failed");
         }
       }
+      toast.success("Product updated successfully");
       setSaving(false);
       onClose();
       return;

@@ -70,10 +70,22 @@ export async function POST(req: NextRequest) {
 
     // 1. Get query embedding (direct call, avoids internal HTTP)
     const textEmbedding = await getTextEmbedding(query);
-    console.log("✅ Got query embedding");
+    console.log("✅ Got query embedding:", textEmbedding);
 
     // 2. Search for relevant products using RAG under the caller's session (RLS enforced)
     //    supabase already initialized with user session
+    
+    // Diagnostic: Check if user can access ANY products at all
+    const { data: diagnosticProducts, error: diagnosticError } = await supabase
+      .from("products")
+      .select("id, name, embedding, tenant_id")
+      .limit(5);
+    console.log("🔍 Diagnostic - Direct product query:", { 
+      count: diagnosticProducts?.length || 0, 
+      hasEmbeddings: diagnosticProducts?.filter(p => p.embedding).length || 0,
+      error: diagnosticError,
+      sample: diagnosticProducts?.[0] 
+    });
     
     // Parallel retrieval: hybrid and vector searches together, then merge
     let products: any[] = [];
@@ -92,11 +104,15 @@ export async function POST(req: NextRequest) {
       }),
     ]);
 
+    // Debug: Log full results including errors
+    console.log("🔍 Hybrid result:", hybridResult.status === "fulfilled" ? { data: (hybridResult.value as any)?.data, error: (hybridResult.value as any)?.error } : { rejected: (hybridResult as any).reason });
+    console.log("🔍 Vector result:", vectorResult.status === "fulfilled" ? { data: (vectorResult.value as any)?.data, error: (vectorResult.value as any)?.error } : { rejected: (vectorResult as any).reason });
+    
     const hybridData = (hybridResult.status === "fulfilled" && (hybridResult.value as any)?.data) || [];
     const vectorData = (vectorResult.status === "fulfilled" && (vectorResult.value as any)?.data) || [];
 
     const all = [...(hybridData || []), ...(vectorData || [])];
-    // console.log("🔍 All products:", all);
+    console.log("🔍 All products:", all);
     const byId = new Map<string, any>();
     for (const item of all) {
       if (!item) continue;
