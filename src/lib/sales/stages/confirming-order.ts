@@ -197,7 +197,7 @@ export async function handleConfirmingOrderStage(
     }
 
     // Answer the product question, then remind about order confirmation
-    const ragReply = await runRagForUserTenants(tenantIds, userText);
+    const ragReply = await runRagForUserTenants(tenantIds, userText, conversationContext.join('\n'));
     const cartProducts = await getCartProducts(tenantIds, session.cart);
     const cartDisplay = formatCartDisplay(cartProducts);
     

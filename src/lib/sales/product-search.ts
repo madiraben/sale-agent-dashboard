@@ -12,23 +12,154 @@ export type Product = {
   image_url: string | null;
 };
 
+export type EnhancedQuery = {
+  original: string;
+  enhanced: string;
+  keywords: string[];
+  context?: string;
+};
+
+/**
+ * Enhance user query using AI to improve RAG accuracy
+ * This extracts key terms, adds synonyms, and normalizes the query
+ */
+export async function enhanceSearchQuery(
+  query: string,
+  conversationContext?: string
+): Promise<EnhancedQuery> {
+  try {
+    logger.info(`🧠 Enhancing search query: "${query}"`);
+    
+    const systemPrompt = `You are a search query optimizer for an e-commerce platform. Your job is to enhance user queries to improve product search accuracy.
+
+Given a user's search query (and optional conversation context), extract and enhance the search terms.
+
+Return ONLY a JSON object with this structure:
+{
+  "enhanced": "optimized search query with key terms and synonyms",
+  "keywords": ["key", "search", "terms"],
+  "context": "brief context summary if relevant"
+}
+
+RULES:
+- Extract core product attributes (type, color, size, brand, material, etc.)
+- Expand with synonyms (e.g., "shirt" → "shirt, t-shirt, blouse, top")
+- Fix typos and normalize spellings
+- Remove filler words (I want, looking for, can I, etc.)
+- Keep it concise but comprehensive
+- If user is vague, use context to clarify
+- Return empty keywords if query is not product-related
+
+Examples:
+Input: "I want a red shirt"
+Output: {"enhanced": "red shirt t-shirt blouse top", "keywords": ["red", "shirt", "t-shirt", "top"], "context": "color: red, type: shirt"}
+
+Input: "do you have nike shoes size 10?"
+Output: {"enhanced": "nike shoes sneakers footwear size 10", "keywords": ["nike", "shoes", "sneakers", "size 10"], "context": "brand: nike, type: shoes, size: 10"}
+
+Input: "something for running"
+Output: {"enhanced": "running shoes sneakers athletic footwear sportswear", "keywords": ["running", "shoes", "athletic", "sportswear"], "context": "purpose: running"}`;
+
+    const userPrompt = conversationContext 
+      ? `Query: "${query}"\n\nRecent conversation:\n${conversationContext}\n\nEnhance this query for product search.`
+      : `Query: "${query}"\n\nEnhance this query for product search.`;
+
+    const resp = await fetch(appConfig.openai.baseUrl + "/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${appConfig.openai.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: appConfig.openai.model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.3,
+        max_tokens: 200,
+        response_format: { type: "json_object" },
+      }),
+    });
+
+    if (!resp.ok) {
+      logger.warn("Query enhancement failed, using original query");
+      return {
+        original: query,
+        enhanced: query,
+        keywords: [query],
+      };
+    }
+
+    const json = await resp.json();
+    const content = json?.choices?.[0]?.message?.content || "{}";
+    const parsed = JSON.parse(content);
+
+    const enhanced: EnhancedQuery = {
+      original: query,
+      enhanced: parsed.enhanced || query,
+      keywords: Array.isArray(parsed.keywords) ? parsed.keywords : [query],
+      context: parsed.context,
+    };
+
+    logger.info(`✨ Enhanced query:`, {
+      original: enhanced.original,
+      enhanced: enhanced.enhanced,
+      keywords: enhanced.keywords,
+      context: enhanced.context,
+    });
+
+    return enhanced;
+  } catch (error) {
+    logger.error("Query enhancement error:", error);
+    // Fallback to original query
+    return {
+      original: query,
+      enhanced: query,
+      keywords: [query],
+    };
+  }
+}
+
 /**
  * Search for products using intelligent search (semantic + keyword)
+ * Now with query enhancement for better RAG accuracy
  */
 export async function searchProducts(
   tenantIds: string[],
-  query: string
+  query: string,
+  conversationContext?: string
 ): Promise<Product[]> {
   try {
-    // First try direct database search with keyword matching
-    const directResults = await searchProductsDirect(tenantIds, query);
+    logger.info(`🔍 Product search - Query: "${query}", TenantIDs: [${tenantIds.join(", ")}]`);
+    
+    // 🚀 NEW: Enhance query with AI before searching
+    const enhancedQuery = await enhanceSearchQuery(query, conversationContext);
+    
+    // First try direct database search with enhanced query
+    const directResults = await searchProductsDirect(tenantIds, enhancedQuery.enhanced);
     
     if (directResults.length > 0) {
+      logger.info(`✅ Direct search found ${directResults.length} products:`, directResults.map(p => `${p.name} (tenant: ${(p as any).tenant_id || 'unknown'})`));
       return directResults;
     }
 
-    // If no results, try semantic search with AI
-    return await searchProductsWithAI(tenantIds, query);
+    // If enhanced query didn't work, try with keywords
+    if (enhancedQuery.keywords.length > 0) {
+      for (const keyword of enhancedQuery.keywords) {
+        const keywordResults = await searchProductsDirect(tenantIds, keyword);
+        if (keywordResults.length > 0) {
+          logger.info(`✅ Keyword search "${keyword}" found ${keywordResults.length} products`);
+          return keywordResults;
+        }
+      }
+    }
+
+    // If no results, try semantic search with AI using enhanced query
+    logger.info("⚠️ No direct matches, trying AI search with enhanced query...");
+    const aiResults = await searchProductsWithAI(tenantIds, enhancedQuery.enhanced, enhancedQuery.keywords);
+    logger.info(`✅ AI search found ${aiResults.length} products`);
+    return aiResults;
   } catch (error) {
     logger.error("Product search error:", error);
     return [];
@@ -45,10 +176,10 @@ async function searchProductsDirect(
   const admin = createSupabaseAdminClient();
   const cleaned = query.trim().toLowerCase();
   
-  // Try exact and partial matches
+  // Try exact and partial matches (include tenant_id for debugging)
   const { data, error } = await admin
     .from("products")
-    .select("id, name, description, price, stock, category_id, image_url")
+    .select("id, name, description, price, stock, category_id, image_url, tenant_id")
     .in("tenant_id", tenantIds)
     .or(`name.ilike.%${cleaned}%,description.ilike.%${cleaned}%`)
     .gt("stock", 0)
@@ -65,10 +196,12 @@ async function searchProductsDirect(
 
 /**
  * AI-powered semantic search for products
+ * Now enhanced with keywords for better matching
  */
 async function searchProductsWithAI(
   tenantIds: string[],
-  query: string
+  query: string,
+  keywords?: string[]
 ): Promise<Product[]> {
   try {
     // Get all products from database first
@@ -91,15 +224,27 @@ async function searchProductsWithAI(
 
     const systemPrompt = `You are a product search assistant. Given a user's search query and a list of products, identify which products best match the query.
 
+Consider:
+- Exact name matches (highest priority)
+- Description matches
+- Semantic similarity
+- Category/type matches
+- Keywords provided
+
 Return ONLY a JSON array of product numbers (1-indexed) that match. If no matches, return [].
+Return products in order of relevance (best match first).
 Example: [1, 3, 5]`;
 
-    const userPrompt = `User is searching for: "${query}"
+    const keywordInfo = keywords && keywords.length > 0 
+      ? `\n\nKey search terms: ${keywords.join(", ")}`
+      : "";
+
+    const userPrompt = `User is searching for: "${query}"${keywordInfo}
 
 Available products:
 ${productList}
 
-Which products match? Return product numbers only.`;
+Which products match? Return product numbers only in order of relevance.`;
 
     const resp = await fetch(appConfig.openai.baseUrl + "/chat/completions", {
       method: "POST",

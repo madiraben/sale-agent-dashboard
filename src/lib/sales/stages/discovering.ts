@@ -145,7 +145,7 @@ export async function handleDiscoveringStage(
       
       // Extract category/type if mentioned (shirt, shoes, etc.)
       const searchTerm = extractProductTypeFromQuery(userText);
-      const products = await searchProducts(tenantIds, searchTerm || "");
+      const products = await searchProducts(tenantIds, searchTerm || "", conversationContext.join('\n'));
       
       if (products.length === 0) {
         const reply = await generateAIResponse({
@@ -181,7 +181,7 @@ export async function handleDiscoveringStage(
     }
 
     // Topic is valid, proceed with RAG for product questions
-    const ragReply = await runRagForUserTenants(tenantIds, userText);
+    const ragReply = await runRagForUserTenants(tenantIds, userText, conversationContext.join('\n'));
     
     // If cart has items, remind user after answering their question
     if (!isCartEmpty(session.cart)) {
@@ -337,7 +337,7 @@ export async function handleDiscoveringStage(
             logger.info(`Fallback: Extracted product from last bot message: ${productName}`);
             
             // Search for this product
-            const results = await searchProducts(tenantIds, productName);
+            const results = await searchProducts(tenantIds, productName, conversationContext.join('\n'));
             
             if (results.length > 0) {
               extracted.items = [{ name: productName, qty: 1 }];
@@ -368,7 +368,7 @@ export async function handleDiscoveringStage(
     const productSearches: Array<{ query: string; results: Product[] }> = [];
     
     for (const item of extracted.items) {
-      const results = await searchProducts(tenantIds, item.name);
+      const results = await searchProducts(tenantIds, item.name, conversationContext.join('\n'));
       if (results.length > 0) {
         productSearches.push({ query: item.name, results });
       }
@@ -569,7 +569,7 @@ async function handleDiscoveringStageUnified(
       if (!result.reply.includes("$") && !isAskingAboutCart(userText)) {
         // Might need RAG enrichment
         try {
-          const ragReply = await runRagForUserTenants(tenantIds, userText);
+          const ragReply = await runRagForUserTenants(tenantIds, userText, conversationContext.join('\n'));
           if (ragReply && ragReply.length > 50) {
             // RAG found good info, use it
             return { reply: ragReply, newStage: "discovering" };
@@ -638,7 +638,7 @@ async function handleDiscoveringStageUnified(
             
             if (productNameMatch) {
               const productName = productNameMatch[1].trim();
-              const results = await searchProducts(tenantIds, productName);
+              const results = await searchProducts(tenantIds, productName, conversationContext.join('\n'));
               
               if (results.length > 0) {
                 result.items = [{ name: productName, qty: 1 }];
@@ -658,7 +658,7 @@ async function handleDiscoveringStageUnified(
       
       for (const item of result.items) {
         logger.info(`Searching for product: "${item.name}"`);
-        const results = await searchProducts(tenantIds, item.name);
+        const results = await searchProducts(tenantIds, item.name, conversationContext.join('\n'));
         logger.info(`Found ${results.length} matches for "${item.name}"`);
         if (results.length > 0) {
           productSearches.push({ query: item.name, results });

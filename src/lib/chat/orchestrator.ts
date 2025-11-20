@@ -23,6 +23,7 @@ export async function handleMessengerText(pageId: string, senderId: string, text
   if (!page || !page.page_token) return { ok: false, reason: "Page not found" } as const;
   
   const tenantIds = await getTenantIdsForUser(page.user_id);
+  logger.info(`🏢 Messenger user ${page.user_id} has tenantIds: [${tenantIds.join(", ")}]`);
   if (tenantIds.length === 0) return { ok: false, reason: "No tenants found" } as const;
 
   try {
@@ -167,6 +168,7 @@ export async function handleTelegramText(
   text: string
 ) {
   const tenantIds = await getTenantIdsForUser(userId);
+  logger.info(`🏢 Telegram user ${userId} has tenantIds: [${tenantIds.join(", ")}]`);
   if (tenantIds.length === 0) return { ok: false, reason: "No tenants found" } as const;
 
   try {

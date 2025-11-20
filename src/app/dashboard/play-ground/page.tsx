@@ -12,8 +12,8 @@ export default function Playground() {
   ]);
   const [input, setInput] = React.useState("");
   const [loading, setLoading] = React.useState(false);
-  const [conversationHistory, setConversationHistory] = React.useState<any[]>([]);
-  const [conversationId, setConversationId] = React.useState<string | null>(null);
+  // const [conversationHistory, setConversationHistory] = React.useState<any[]>([]);
+  // const [conversationId, setConversationId] = React.useState<string | null>(null);
 
   // Memoized message row to avoid re-rendering older messages during streaming
   const MemoChatMessage = React.useMemo(() => React.memo(ChatMessage), []);
@@ -66,7 +66,7 @@ export default function Playground() {
       const resp = await fetch("/api/rag-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: text, conversationHistory, conversationId }),
+        body: JSON.stringify({ query: text, /* conversationHistory, conversationId */  }),
         signal: abortRef.current.signal,
       });
       clearTimeout(timeoutId);
@@ -110,8 +110,8 @@ export default function Playground() {
           if (!payload || payload === "[DONE]") continue;
           try {
             const evt = JSON.parse(payload);
-            if (evt.type === "products" && evt.conversationId && !conversationId) {
-              setConversationId(evt.conversationId as string);
+            if (evt.type === "products" /*&& evt.conversationId !conversationId*/ ) {
+              // setConversationId(evt.conversationId as string);
             } else if (evt.type === "chunk" && typeof evt.content === "string") {
               pendingChunkRef.current += evt.content as string;
               scheduleFlush();
@@ -132,11 +132,11 @@ export default function Playground() {
 
       const finalText = lastAssistantContentRef.current;
       if (finalText) {
-        setConversationHistory((h) => {
-          const next = [...h, { role: "user", content: text }, { role: "assistant", content: finalText }];
+        // setConversationHistory((h) => {
+          const next = [/*...h,*/ { role: "user", content: text }, { role: "assistant", content: finalText }];
           // Keep only the last 8 entries to bound memory
           return next.slice(-8);
-        });
+        // });
       }
     } catch (e: any) {
       const errorText = e?.message || "Network error while contacting AI.";

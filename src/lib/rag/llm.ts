@@ -2,8 +2,15 @@ import { appConfig } from "@/lib/config";
 import { buildProductContextForTenants } from "./context";
 import logger from '@/lib/logger';
 
-export async function completeWithContext(tenantIds: string[], embedding: number[], text: string): Promise<string> {
-  const { context } = await buildProductContextForTenants(tenantIds, embedding, text);
+export async function completeWithContext(
+  tenantIds: string[], 
+  embedding: number[], 
+  text: string,
+  optimizedQuery?: string
+): Promise<string> {
+  // Use optimized query for hybrid search if available, otherwise use original
+  const searchQuery = optimizedQuery || text;
+  const { context } = await buildProductContextForTenants(tenantIds, embedding, searchQuery);
   logger.info("RAG context:", context);
   
   // Detect if the user message contains Khmer script

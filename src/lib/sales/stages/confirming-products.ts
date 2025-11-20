@@ -159,7 +159,7 @@ export async function handleConfirmingProductsStage(
     const newSearches: Array<{ query: string; results: Product[] }> = [];
     
     for (const item of extracted.items) {
-      const results = await searchProducts(tenantIds, item.name);
+      const results = await searchProducts(tenantIds, item.name, conversationContext.join('\n'));
       if (results.length > 0) {
         newSearches.push({ query: item.name, results });
       }
@@ -338,7 +338,7 @@ async function handleConfirmingProductsStageUnified(
     const newSearches: Array<{ query: string; results: Product[] }> = [];
     
     for (const item of result.items) {
-      const results = await searchProducts(tenantIds, item.name);
+      const results = await searchProducts(tenantIds, item.name, conversationContext.join('\n'));
       if (results.length > 0) {
         newSearches.push({ query: item.name, results });
       }
