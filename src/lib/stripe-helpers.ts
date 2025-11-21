@@ -1,10 +1,6 @@
 import Stripe from "stripe";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-/**
- * Ensure a Stripe customer exists for a tenant. Creates one if it doesn't exist.
- * Returns the Stripe customer ID.
- */
 export async function ensureStripeCustomer(params: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -31,7 +27,6 @@ export async function ensureStripeCustomer(params: {
     metadata: { tenant_id: tenantId },
   });
   
-  // Update tenant with customer ID
   await supabase
     .from("tenants")
     .update({ stripe_customer_id: customer.id })
@@ -40,10 +35,6 @@ export async function ensureStripeCustomer(params: {
   return customer.id;
 }
 
-/**
- * Resolve the current tenant for the authenticated user.
- * Creates a default workspace if none exists.
- */
 export async function resolveUserTenant(supabase: SupabaseClient): Promise<{
   tenantId: string;
   tenant: any;

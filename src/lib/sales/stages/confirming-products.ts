@@ -18,86 +18,42 @@ import { getUnifiedAIResponse } from "../unified-ai";
 import logger from "../../logger";
 import { StageResponse } from "./types";
 import { extractProductIdsFromSelection } from "./helpers";
+import {
+  initializeStageContext,
+  handleOffTopicCheck,
+  handleCancelIntent,
+} from "./common-handlers";
 
-// ============================================
-// STAGE 2: CONFIRMING_PRODUCTS
-// User needs to select from multiple product matches
-// ============================================
+
 export async function handleConfirmingProductsStage(
   tenantIds: string[],
   session: BotSession,
   userText: string
 ): Promise<StageResponse> {
-  const conversationContext = getRecentConversation(session.conversation_history);
-
-  // 🚀 OPTIMIZATION: Use unified AI call
-  const useUnifiedAI = true;
+  const { conversationContext, useUnifiedAI } = initializeStageContext(session);
   
   if (useUnifiedAI) {
     return await handleConfirmingProductsStageUnified(tenantIds, session, userText, conversationContext);
   }
 
   // Legacy approach below
-  // FIRST: Check if message is off-topic (before any processing)
-  if (isObviouslyOffTopic(userText)) {
-    logger.info("Off-topic query in confirming_products stage (pattern match)");
-    
-    const productResults = session.pending_products ? formatPendingProducts(session.pending_products) : "";
-    const reply = await generateAIResponse({
-      stage: "confirming_products",
-      userMessage: userText,
-      conversationHistory: conversationContext,
-      productResults,
-      systemContext: "Customer asked off-topic question. Politely redirect them to select a product from the options.",
-    });
-
-    return {
-      reply,
-      newStage: "confirming_products",
-    };
+  // Check if message is off-topic using common handler
+  const productResults = session.pending_products ? formatPendingProducts(session.pending_products) : "";
+  const offTopicResult = await handleOffTopicCheck(
+    userText,
+    "confirming_products",
+    conversationContext,
+    { productResults }
+  );
+  if (offTopicResult) {
+    return offTopicResult;
   }
 
   const extracted: SalesIntent = await extractSalesIntent(userText, conversationContext, "confirming_products");
 
-  // Check if it's a query and validate topic
-  if (extracted.intent === "query") {
-    const topicValidation = await validateProductTopic(userText);
-    
-    if (!topicValidation.isOnTopic && topicValidation.confidence > 0.6) {
-      logger.info("Off-topic query in confirming_products stage", { 
-        confidence: topicValidation.confidence 
-      });
-
-      const productResults = session.pending_products ? formatPendingProducts(session.pending_products) : "";
-      const reply = await generateAIResponse({
-        stage: "confirming_products",
-        userMessage: userText,
-        conversationHistory: conversationContext,
-        productResults,
-        systemContext: "Customer asked off-topic question. Politely say you can only answer product questions and redirect to selection.",
-      });
-
-      return {
-        reply,
-        newStage: "confirming_products",
-      };
-    }
-  }
-
   // Handle cancel
   if (extracted.intent === "cancel") {
-    const reply = await generateAIResponse({
-      stage: "discovering",
-      userMessage: userText,
-      conversationHistory: conversationContext,
-      systemContext: "Customer cancelled product selection. Product selection cleared. Ask what they'd like to do instead.",
-    });
-
-    return {
-      reply,
-      newStage: "discovering",
-      updatedPendingProducts: undefined,
-    };
+    return await handleCancelIntent(userText, conversationContext);
   }
 
   // Check if user is providing more specific info or selections
@@ -242,12 +198,12 @@ export async function handleConfirmingProductsStage(
   }
 
   // Fallback
-  const productResults = formatPendingProducts(session.pending_products);
+  const fallbackProductResults = formatPendingProducts(session.pending_products);
   const reply = await generateAIResponse({
     stage: "confirming_products",
     userMessage: userText,
     conversationHistory: conversationContext,
-    productResults,
+    productResults: fallbackProductResults,
     systemContext: "Show the product options again and ask customer to tell you which one they want by name.",
   });
 
@@ -257,9 +213,6 @@ export async function handleConfirmingProductsStage(
   };
 }
 
-// ============================================
-// UNIFIED VERSION - 50% faster
-// ============================================
 async function handleConfirmingProductsStageUnified(
   tenantIds: string[],
   session: BotSession,
@@ -268,10 +221,10 @@ async function handleConfirmingProductsStageUnified(
 ): Promise<StageResponse> {
   logger.info("🚀 Using unified AI approach for confirming_products stage");
 
-  // Check for off-topic
-  if (isObviouslyOffTopic(userText)) {
-    const reply = getOffTopicResponse(1.0, userText);
-    return { reply, newStage: "confirming_products" };
+  // Check for off-topic using common handler
+  const offTopicResult = await handleOffTopicCheck(userText, "confirming_products", conversationContext);
+  if (offTopicResult) {
+    return offTopicResult;
   }
 
   // Check if we have pending products
@@ -302,11 +255,7 @@ async function handleConfirmingProductsStageUnified(
 
   // Handle cancel
   if (result.intent === "cancel") {
-    return {
-      reply: result.reply,
-      newStage: "discovering",
-      updatedPendingProducts: undefined,
-    };
+    return await handleCancelIntent(userText, conversationContext);
   }
 
   // Try to extract product selection

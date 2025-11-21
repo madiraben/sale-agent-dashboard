@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import logger from "./logger";
+import { getCachedEmbedding, cacheEmbedding } from "./rag/query-cache";
 
 async function getAccessTokenFromServiceAccount(): Promise<string> { try {
   const clientEmail = process.env.GOOGLE_CLOUD_CLIENT_EMAIL;
@@ -51,8 +52,15 @@ function normalizeVector(vector: number[]): number[] {
 
 export async function getTextEmbedding(text: string): Promise<number[]> {
       if (!text || !text.trim()) throw new Error("text_required");
+      
+      // 🚀 OPTIMIZATION: Check cache first (saves ~400ms Vertex AI call)
+      const cached = getCachedEmbedding(text);
+      if (cached) {
+        return cached;
+      }
+      
       try {
-      logger.info("Received text for text embedding:", text);
+      logger.info("Generating embedding for text:", text.slice(0, 100));
       const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
       const location = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
       if (!projectId) throw new Error("GOOGLE_CLOUD_PROJECT_ID not set in environment");
@@ -96,6 +104,10 @@ export async function getTextEmbedding(text: string): Promise<number[]> {
       const textEmbedding = first.textEmbedding ? normalizeVector(first.textEmbedding as number[]) : null;
       // logger.info("Normalized text embedding:", textEmbedding);
         if (!textEmbedding) throw new Error("no_text_embedding");
+        
+        // 🚀 Cache the embedding for future use
+        cacheEmbedding(text, textEmbedding);
+        
         return textEmbedding as number[];
       } catch (error) {
         logger.error("Error getting text embedding:", error as Error);

@@ -1,9 +1,4 @@
 import crypto from "node:crypto";
-
-/**
- * Generate a Google Cloud access token using service account credentials from environment variables.
- * Requires GOOGLE_CLOUD_CLIENT_EMAIL and GOOGLE_CLOUD_PRIVATE_KEY to be set.
- */
 export async function getGoogleCloudAccessToken(): Promise<string> {
   const client_email = process.env.GOOGLE_CLOUD_CLIENT_EMAIL;
   const private_key = process.env.GOOGLE_CLOUD_PRIVATE_KEY?.replace(/\\n/g, "\n");

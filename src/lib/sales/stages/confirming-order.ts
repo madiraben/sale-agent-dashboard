@@ -1,21 +1,28 @@
-import { extractSalesIntent, SalesIntent, isContactComplete } from "../intent";
+import { extractSalesIntent, SalesIntent } from "../intent";
 import { runRagForUserTenants } from "@/lib/rag/engine";
 import { 
   BotSession, 
-  clearCart, 
   isCartEmpty,
-  getRecentConversation,
 } from "../session";
-import { createPendingOrder } from "../order";
 import { 
   getCartProducts,
   formatCartDisplay,
 } from "../product-search";
-import { validateProductTopic, isObviouslyOffTopic, getOffTopicResponse } from "../topic-validator";
 import { generateAIResponse } from "../ai-responder";
 import { getUnifiedAIResponse } from "../unified-ai";
 import logger from "../../logger";
 import { StageResponse } from "./types";
+import {
+  initializeStageContext,
+  handleOffTopicCheck,
+  handleCancelIntent,
+  CONFIRMATION_PATTERNS,
+  matchesPattern,
+  createOrderWithHandling,
+  createOrderWithUnifiedAI,
+  hasCompleteContactInfo,
+  normalizeContact,
+} from "./common-handlers";
 
 // ============================================
 // STAGE 3: CONFIRMING_ORDER
@@ -26,10 +33,7 @@ export async function handleConfirmingOrderStage(
   session: BotSession,
   userText: string
 ): Promise<StageResponse> {
-  const conversationContext = getRecentConversation(session.conversation_history);
-  
-  // 🚀 OPTIMIZATION: Use unified AI call
-  const useUnifiedAI = true;
+  const { conversationContext, useUnifiedAI } = initializeStageContext(session);
   
   if (useUnifiedAI) {
     return await handleConfirmingOrderStageUnified(tenantIds, session, userText, conversationContext);
@@ -38,11 +42,8 @@ export async function handleConfirmingOrderStage(
   // Legacy approach
   const extracted: SalesIntent = await extractSalesIntent(userText, conversationContext, "confirming_order");
   
-  const lowerText = userText.toLowerCase().trim();
-
   // Handle confirmation
-  if (extracted.intent === "confirm_order" || 
-      /^(yes|yeah|yep|sure|ok|okay|correct|confirm|that'?s? right|looks good|proceed)$/i.test(lowerText)) {
+  if (extracted.intent === "confirm_order" || matchesPattern(userText, CONFIRMATION_PATTERNS.YES)) {
     
     if (isCartEmpty(session.cart)) {
       const reply = await generateAIResponse({
@@ -59,49 +60,17 @@ export async function handleConfirmingOrderStage(
     }
 
     // Check if we have contact info
-    if (isContactComplete(session.contact)) {
-      // We have everything, create order
-      try {
-        const result = await createPendingOrder({
-          tenantIds,
-          contact: {
-            name: session.contact.name!,
-            email: session.contact.email || null,
-            phone: session.contact.phone || null,
-            address: session.contact.address || null,
-          },
-          cart: session.cart,
-          messengerSenderId: session.external_user_id, // Link order to Messenger sender
-        });
-
-        const reply = await generateAIResponse({
-          stage: "discovering",
-          userMessage: userText,
-          conversationHistory: conversationContext,
-          systemContext: `Order #${result?.orderId} created successfully! Total: $${result?.total.toFixed(2)}, Items: ${result?.itemCount}. Thank customer ${session.contact.name} and let them know we'll contact them at ${session.contact.phone || session.contact.email}. Ask if they need anything else.`,
-        });
-
-        return {
-          reply,
-          newStage: "discovering",
-          updatedCart: clearCart(),
-          updatedContact: {},
-        };
-      } catch (error: any) {
-        logger.error("Order creation failed:", error);
-        
-        const reply = await generateAIResponse({
-          stage: "discovering",
-          userMessage: userText,
-          conversationHistory: conversationContext,
-          systemContext: `Error creating order: ${error.message}. Apologize and ask them to try again or contact support.`,
-        });
-
-        return {
-          reply,
-          newStage: "discovering",
-        };
-      }
+    if (hasCompleteContactInfo(session.contact)) {
+      // We have everything, create order using common handler
+      return await createOrderWithHandling({
+        tenantIds,
+        contact: normalizeContact(session.contact!),
+        cart: session.cart,
+        messengerSenderId: session.external_user_id,
+        userText,
+        conversationContext,
+        includeOrderDetails: false,
+      });
     }
 
     // Need contact info
@@ -119,21 +88,8 @@ export async function handleConfirmingOrderStage(
   }
 
   // Handle cancellation
-  if (extracted.intent === "cancel" || 
-      /^(no|nope|cancel|stop|nevermind|never mind)$/i.test(lowerText)) {
-    
-    const reply = await generateAIResponse({
-      stage: "discovering",
-      userMessage: userText,
-      conversationHistory: conversationContext,
-      systemContext: "Customer cancelled the order. Cart has been cleared. Ask if you can help with something else.",
-    });
-
-    return {
-      reply,
-      newStage: "discovering",
-      updatedCart: clearCart(),
-    };
+  if (extracted.intent === "cancel" || matchesPattern(userText, CONFIRMATION_PATTERNS.CANCEL)) {
+    return await handleCancelIntent(userText, conversationContext);
   }
 
   // Handle modifications
@@ -157,49 +113,23 @@ export async function handleConfirmingOrderStage(
 
   // User asking questions during confirmation
   if (extracted.intent === "query") {
-    // Check if question is off-topic
-    if (isObviouslyOffTopic(userText)) {
-      const cartProducts = await getCartProducts(tenantIds, session.cart);
-      const cartDisplay = formatCartDisplay(cartProducts);
-      
-      const reply = await generateAIResponse({
-        stage: "confirming_order",
-        userMessage: userText,
-        conversationHistory: conversationContext,
-        cartSummary: cartDisplay,
-        systemContext: "Customer asked off-topic question. Politely redirect to order confirmation. Show cart and ask if they're ready to confirm (yes/no).",
-      });
-
-      return {
-        reply,
-        newStage: "confirming_order",
-      };
-    }
-
-    const topicValidation = await validateProductTopic(userText);
+    // Check if question is off-topic using common handler
+    let cartProducts = await getCartProducts(tenantIds, session.cart);
+    let cartDisplay = formatCartDisplay(cartProducts);
     
-    if (!topicValidation.isOnTopic && topicValidation.confidence > 0.6) {
-      const cartProducts = await getCartProducts(tenantIds, session.cart);
-      const cartDisplay = formatCartDisplay(cartProducts);
-      
-      const reply = await generateAIResponse({
-        stage: "confirming_order",
-        userMessage: userText,
-        conversationHistory: conversationContext,
-        cartSummary: cartDisplay,
-        systemContext: "Customer asked off-topic question. Say you can only answer product questions. Show cart and ask if ready to confirm.",
-      });
-
-      return {
-        reply,
-        newStage: "confirming_order",
-      };
+    const offTopicResult = await handleOffTopicCheck(
+      userText,
+      "confirming_order",
+      conversationContext,
+      { cartSummary: cartDisplay }
+    );
+    if (offTopicResult) {
+      return offTopicResult;
     }
 
     // Answer the product question, then remind about order confirmation
     const ragReply = await runRagForUserTenants(tenantIds, userText, conversationContext.join('\n'));
-    const cartProducts = await getCartProducts(tenantIds, session.cart);
-    const cartDisplay = formatCartDisplay(cartProducts);
+    // Reuse the already fetched cart info
     
     const reply = await generateAIResponse({
       stage: "confirming_order",
@@ -216,14 +146,14 @@ export async function handleConfirmingOrderStage(
   }
 
   // Fallback - show cart and ask for confirmation
-  const cartProducts = await getCartProducts(tenantIds, session.cart);
-  const cartDisplay = formatCartDisplay(cartProducts);
+  const fallbackCartProducts = await getCartProducts(tenantIds, session.cart);
+  const fallbackCartDisplay = formatCartDisplay(fallbackCartProducts);
   
   const reply = await generateAIResponse({
     stage: "confirming_order",
     userMessage: userText,
     conversationHistory: conversationContext,
-    cartSummary: cartDisplay,
+    cartSummary: fallbackCartDisplay,
     systemContext: "Show customer their order and ask them to confirm (yes to proceed, no to cancel).",
   });
   
@@ -272,39 +202,20 @@ async function handleConfirmingOrderStageUnified(
   logger.info("Unified result:", { intent: result.intent, confidence: result.confidence });
 
   // Handle confirmation
-  if (result.intent === "confirm_order" || 
-      /^(yes|yeah|yep|sure|ok|okay|correct|confirm|that'?s? right|looks good|proceed)$/i.test(lowerText)) {
+  if (result.intent === "confirm_order" || matchesPattern(userText, CONFIRMATION_PATTERNS.YES)) {
     
     // Check if we already have complete contact info
-    if (session.contact && isContactComplete(session.contact)) {
-      try {
-        const orderResult = await createPendingOrder({
-          tenantIds,
-          contact: {
-            name: session.contact.name!,
-            email: session.contact.email || null,
-            phone: session.contact.phone || null,
-            address: session.contact.address || null,
-          },
-          cart: session.cart,
-          messengerSenderId: session.external_user_id,
-        });
-        
-        return {
-          reply: result.reply,
-          newStage: "discovering",
-          updatedCart: clearCart(),
-          updatedContact: undefined,
-          updatedPendingProducts: undefined,
-          orderId: orderResult?.orderId,
-        };
-      } catch (error) {
-        logger.error("Failed to create order:", error);
-        return {
-          reply: result.reply,
-          newStage: "confirming_order",
-        };
-      }
+    if (hasCompleteContactInfo(session.contact)) {
+      // Use common handler for unified AI order creation
+      return await createOrderWithUnifiedAI({
+        tenantIds,
+        contact: normalizeContact(session.contact!),
+        cart: session.cart,
+        messengerSenderId: session.external_user_id,
+        userText,
+        conversationContext,
+        includeOrderDetails: false,
+      });
     }
 
     // Need to collect contact information
@@ -315,20 +226,15 @@ async function handleConfirmingOrderStageUnified(
   }
 
   // Handle cancellation
-  if (result.intent === "cancel" || 
-      /^(no|nope|cancel|nevermind|never mind)$/i.test(lowerText)) {
-    return {
-      reply: result.reply,
-      newStage: "discovering",
-      updatedCart: clearCart(),
-    };
+  if (result.intent === "cancel" || matchesPattern(userText, CONFIRMATION_PATTERNS.CANCEL)) {
+    return await handleCancelIntent(userText, conversationContext);
   }
 
   // Handle off-topic or query
   if (result.intent === "query") {
-    if (isObviouslyOffTopic(userText)) {
-      const reply = getOffTopicResponse(1.0, userText);
-      return { reply, newStage: "confirming_order" };
+    const offTopicResult = await handleOffTopicCheck(userText, "confirming_order", conversationContext);
+    if (offTopicResult) {
+      return offTopicResult;
     }
   }
 

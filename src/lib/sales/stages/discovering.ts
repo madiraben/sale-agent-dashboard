@@ -26,20 +26,19 @@ import {
   extractProductTypeFromQuery, 
   isAskingAboutCart 
 } from "./helpers";
+import {
+  initializeStageContext,
+  handleOffTopicCheck,
+  handleCancelIntent,
+} from "./common-handlers";
 
-// ============================================
-// STAGE 1: DISCOVERING
-// User is browsing, asking questions, or starting to order
-// ============================================
+
 export async function handleDiscoveringStage(
   tenantIds: string[],
   session: BotSession,
   userText: string
 ): Promise<StageResponse> {
-  const conversationContext = getRecentConversation(session.conversation_history);
-  
-  // 🚀 OPTIMIZATION: Use unified AI call (1 call instead of 2)
-  const useUnifiedAI = true; // Feature flag
+  const { conversationContext, useUnifiedAI } = initializeStageContext(session);
   
   if (useUnifiedAI) {
     return await handleDiscoveringStageUnified(tenantIds, session, userText, conversationContext);
@@ -52,51 +51,15 @@ export async function handleDiscoveringStage(
 
   // Handle cancel/reset
   if (extracted.intent === "cancel") {
-    const reply = await generateAIResponse({
-      stage: "discovering",
-      userMessage: userText,
-      conversationHistory: conversationContext,
-      systemContext: "Customer cancelled their order. Cart has been cleared. Ask how you can help them now.",
-    });
-    logger.info("AI reply:", reply);
-
-    return {
-      reply,
-      newStage: "discovering",
-      updatedCart: clearCart(),
-      updatedPendingProducts: undefined,
-    };
+    return await handleCancelIntent(userText, conversationContext);
   }
 
   // Handle queries (product questions, general questions)
   if (extracted.intent === "query") {
-    // First, check if question is obviously off-topic (fast check)
-    if (isObviouslyOffTopic(userText)) {
-      logger.info("Obviously off-topic query detected (pattern match)");
-      const reply = getOffTopicResponse(1.0, userText);
-      logger.info("AI reply:", reply);
-      return {
-        reply,
-        newStage: "discovering",
-      };
-    }
-
-    // Validate topic using AI (more thorough check)
-    const topicValidation = await validateProductTopic(userText);
-
-    logger.info("Topic validation:", topicValidation);
-    
-    if (!topicValidation.isOnTopic && topicValidation.confidence > 0.6) {
-      logger.info("Off-topic query detected", { 
-        confidence: topicValidation.confidence, 
-        reason: topicValidation.reason 
-      });
-      const reply = getOffTopicResponse(topicValidation.confidence, userText);
-      logger.info("AI reply:", reply);
-      return {
-        reply,
-        newStage: "discovering",
-      };
+    // Check if off-topic using common handler
+    const offTopicResult = await handleOffTopicCheck(userText, "discovering", conversationContext);
+    if (offTopicResult) {
+      return offTopicResult;
     }
 
     // Check if user is asking specifically about their cart
@@ -518,11 +481,10 @@ async function handleDiscoveringStageUnified(
 ): Promise<StageResponse> {
   logger.info("🚀 Using unified AI approach (1 call instead of 2)");
 
-  // Step 1: Fast pattern checks for off-topic queries
-  if (isObviouslyOffTopic(userText)) {
-    logger.info("Obviously off-topic query detected (pattern match)");
-    const reply = getOffTopicResponse(1.0, userText);
-    return { reply, newStage: "discovering" };
+  // Step 1: Check if off-topic using common handler
+  const offTopicResult = await handleOffTopicCheck(userText, "discovering", conversationContext);
+  if (offTopicResult) {
+    return offTopicResult;
   }
 
   // Step 2: Make single unified AI call
@@ -549,12 +511,8 @@ async function handleDiscoveringStageUnified(
   // Step 4: Handle intents based on classification
   switch (result.intent) {
     case "cancel":
-      return {
-        reply: result.reply,
-        newStage: "discovering",
-        updatedCart: clearCart(),
-        updatedPendingProducts: undefined,
-      };
+      // Use common cancel handler
+      return await handleCancelIntent(userText, conversationContext);
 
     case "query": {
       // Additional topic validation for queries
