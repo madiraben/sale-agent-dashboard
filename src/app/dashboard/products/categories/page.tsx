@@ -3,7 +3,7 @@
 import React from "react";
 import Button from "@/components/ui/button";
 import TextField from "@/components/ui/text-field";
-import SideDrawer from "@/components/ui/side-drawer";
+import Modal from "@/components/ui/modal";
 import SearchInput from "@/components/ui/search-input";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import TextArea from "@/components/ui/text-area";
@@ -76,26 +76,26 @@ export default function ProductCategoriesPage() {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="min-w-full text-left text-sm">
-          <thead>
-            <tr className="border-y-2 text-gray-700 font-semibold" style={{ borderImage: "linear-gradient(90deg, var(--brand-start), var(--brand-end)) 1" }}>
-              <th className="px-4 py-3 w-14">No.</th>
-              <th className="px-4 py-3">Name</th>
-              <th className="px-4 py-3">Updated</th>
-              <th className="px-4 py-3 text-right">Action</th>
+        <table className="min-w-full text-left text-sm border-2 border-black">
+          <thead className="table-header-gradient text-white font-semibold">
+            <tr>
+              <th className="px-3 py-2 w-14">No.</th>
+              <th className="px-3 py-2">Name</th>
+              <th className="px-3 py-2">Updated</th>
+              <th className="px-3 py-2 text-right">Action</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody>
             {filtered.map((c, idx) => (
-              <tr key={c.id} className="hover:bg-brand-subtle transition-colors">
-                <td className="px-4 py-3 text-gray-700">{idx + 1}.</td>
-                <td className="px-4 py-3 text-gray-800">
+              <tr key={c.id} className="hover:bg-gray-100 border-t border-gray-300">
+                <td className="px-3 py-2 text-black">{idx + 1}.</td>
+                <td className="px-3 py-2 text-black">
                   <div className="inline-flex items-center gap-2">
-                    <span className="font-semibold text-gray-900">{c.name}</span>
+                    <span className="font-semibold text-black">{c.name}</span>
                   </div>
                 </td>
-                <td className="px-4 py-3 text-gray-700">{c.updated_at ? new Date(c.updated_at as string).toLocaleDateString() : "-"}</td>
-                <td className="px-4 py-3">
+                <td className="px-3 py-2 text-black">{c.updated_at ? new Date(c.updated_at as string).toLocaleDateString() : "-"}</td>
+                <td className="px-3 py-2">
                   <div className="flex items-center justify-end gap-2">
                     <button className="inline-flex h-8 items-center justify-center rounded-lg border-2 px-3 text-sm font-medium hover:bg-brand-subtle transition-all" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }} onClick={() => setOpenEdit(c.id)}>
                       Edit
@@ -147,38 +147,39 @@ function AddCategoryDrawer({ onClose }: { onClose: () => void }) {
   const supabase = React.useMemo(() => createSupabaseBrowserClient(), []);
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
 
   async function onSave() {
-    if (!name.trim()) return onClose();
+    if (!name.trim()) {
+      toast.error("Category name is required");
+      return;
+    }
+    setSaving(true);
     const { error } = await supabase.from("product_categories").insert({ name: name.trim(), description: description.trim() || null });
+    setSaving(false);
     if (error) {
       toast.error(error.message || "Failed to add category");
     } else {
       toast.success("Category added");
+      onClose();
     }
-    onClose();
   }
 
   return (
-    <SideDrawer
-      open
-      onClose={onClose}
+    <Modal
+      open={true}
+      onOpenChange={(open) => !open && onClose()}
       title="Add Category"
-      footer={(
-        <div className="flex items-center justify-end gap-3">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={onSave}>Save</Button>
-        </div>
-      )}
+      widthClassName="max-w-md"
     >
-      <div className="mt-2">
+      <div className="space-y-4">
         <TextField
-          placeholder="Category Name *"
+          label="Category Name"
+          placeholder="Enter category name"
           value={name}
           onChange={(e) => setName(e.target.value)}
+          required
         />
-      </div>
-      <div className="mt-4">
         <TextArea
           label="Description"
           rows={4}
@@ -187,7 +188,11 @@ function AddCategoryDrawer({ onClose }: { onClose: () => void }) {
           onChange={(e) => setDescription(e.target.value)}
         />
       </div>
-    </SideDrawer>
+      <div className="mt-6 flex items-center justify-end gap-3 border-t border-gray-200 pt-4">
+        <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+        <Button onClick={onSave} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
+      </div>
+    </Modal>
   );
 }
 
@@ -195,6 +200,7 @@ function EditCategoryDrawer({ id, onClose }: { id: string; onClose: () => void }
   const supabase = React.useMemo(() => createSupabaseBrowserClient(), []);
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
     supabase
@@ -209,36 +215,39 @@ function EditCategoryDrawer({ id, onClose }: { id: string; onClose: () => void }
   }, [id]);
 
   async function onSave() {
-    if (!name.trim()) return onClose();
+    if (!name.trim()) {
+      toast.error("Category name is required");
+      return;
+    }
+    setSaving(true);
     const { error } = await supabase
       .from("product_categories")
       .update({ name: name.trim(), description: description.trim() || null })
       .eq("id", id);
-    if (error) toast.error(error.message || "Failed to update category");
-    else toast.success("Category updated");
-    onClose();
+    setSaving(false);
+    if (error) {
+      toast.error(error.message || "Failed to update category");
+    } else {
+      toast.success("Category updated");
+      onClose();
+    }
   }
 
   return (
-    <SideDrawer
-      open
-      onClose={onClose}
+    <Modal
+      open={true}
+      onOpenChange={(open) => !open && onClose()}
       title="Edit Category"
-      footer={(
-        <div className="flex items-center justify-end gap-3">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={onSave}>Save</Button>
-        </div>
-      )}
+      widthClassName="max-w-md"
     >
-      <div className="mt-2">
+      <div className="space-y-4">
         <TextField
-          placeholder="Category Name *"
+          label="Category Name"
+          placeholder="Enter category name"
           value={name}
           onChange={(e) => setName(e.target.value)}
+          required
         />
-      </div>
-      <div className="mt-4">
         <TextArea
           label="Description"
           rows={4}
@@ -247,7 +256,11 @@ function EditCategoryDrawer({ id, onClose }: { id: string; onClose: () => void }
           onChange={(e) => setDescription(e.target.value)}
         />
       </div>
-    </SideDrawer>
+      <div className="mt-6 flex items-center justify-end gap-3 border-t border-gray-200 pt-4">
+        <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+        <Button onClick={onSave} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
+      </div>
+    </Modal>
   );
 }
 

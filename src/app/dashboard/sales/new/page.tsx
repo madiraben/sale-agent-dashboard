@@ -189,7 +189,7 @@ export default function NewOrderPage() {
         {/* Left: Customer + Products */}
         <div className="space-y-6">
           {/* Customer block */}
-          <div className="rounded-lg border-2 bg-brand-subtle p-4" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
+          <div className="rounded-lg border-2 border-black bg-gray-50 p-4">
             <div className="mb-3 flex items-center justify-between">
               <div className="text-sm font-bold text-gray-900">Customer</div>
               <label className="flex items-center gap-2 text-sm text-gray-700">
@@ -218,14 +218,14 @@ export default function NewOrderPage() {
           </div>
 
           {/* Products block */}
-          <div className="rounded-lg border-2 bg-brand-subtle p-4" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
+          <div className="rounded-lg border-2 border-black bg-gray-50 p-4">
             <div className="mb-3 text-sm font-bold text-gray-900">Products</div>
             <div className="mb-2">
               <SearchInput placeholder="Search products" value={productSearch} onChange={(e) => setProductSearch(e.target.value)} />
             </div>
-            <div className="max-h-48 overflow-auto rounded border-2" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
+            <div className="max-h-48 overflow-auto rounded border-2 border-black">
               <table className="w-full text-left text-sm">
-                <thead className="sticky top-0 border-b-2 bg-white text-gray-700 font-semibold" style={{ borderImage: "linear-gradient(90deg, var(--brand-start), var(--brand-end)) 1" }}>
+                <thead className="table-header-gradient sticky top-0 border-b-2 border-black text-white font-semibold">
                   <tr>
                     <th className="px-3 py-2">Product</th>
                     <th className="px-3 py-2">Price</th>
@@ -233,12 +233,12 @@ export default function NewOrderPage() {
                     <th className="px-3 py-2 w-24"></th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="bg-white">
                   {filteredProducts.map((p) => (
-                    <tr key={p.id} className="border-t">
-                      <td className="px-3 py-2 font-medium text-gray-900">{p.name}</td>
-                      <td className="px-3 py-2 font-semibold text-gray-900">{Currency(p.price)}</td>
-                      <td className="px-3 py-2 font-semibold text-gray-900">{p.stock ?? "-"}</td>
+                    <tr key={p.id} className="border-t border-gray-300">
+                      <td className="px-3 py-2 font-medium text-black">{p.name}</td>
+                      <td className="px-3 py-2 font-semibold text-black">{Currency(p.price)}</td>
+                      <td className="px-3 py-2 font-semibold text-black">{p.stock ?? "-"}</td>
                       <td className="px-3 py-2">
                         <Button variant="outline" onClick={() => addProductToCart(p)}>Add</Button>
                       </td>
@@ -255,11 +255,11 @@ export default function NewOrderPage() {
 
         {/* Right: Cart + Submit */}
         <div className="space-y-6">
-          <div className="rounded-lg border-2 bg-brand-subtle p-4" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
+          <div className="rounded-lg border-2 border-black bg-gray-50 p-4">
             <div className="mb-2 text-sm font-bold text-gray-900">Cart</div>
-            <div className="rounded border-2" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
+            <div className="rounded border-2 border-black">
               <table className="w-full text-left text-sm">
-                <thead className="border-b-2 bg-white text-gray-700 font-semibold" style={{ borderImage: "linear-gradient(90deg, var(--brand-start), var(--brand-end)) 1" }}>
+                <thead className="table-header-gradient border-b-2 border-black text-white font-semibold">
                   <tr>
                     <th className="px-3 py-2">Item</th>
                     <th className="px-3 py-2 w-20">Qty</th>
@@ -268,11 +268,11 @@ export default function NewOrderPage() {
                     <th className="px-3 py-2 w-12"></th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="bg-white">
                   {itemRows.map((r, idx) => (
-                    <tr key={r.product_id} className="border-t">
+                    <tr key={r.product_id} className="border-t border-gray-300">
                       <td className="px-3 py-2">
-                        <div className="font-medium text-gray-900">{r.name}</div>
+                        <div className="font-medium text-black">{r.name}</div>
                         {typeof r.stock === "number" ? <div className="text-xs text-gray-500">In stock: {r.stock}</div> : null}
                       </td>
                       <td className="px-3 py-2">
@@ -281,7 +281,7 @@ export default function NewOrderPage() {
                       <td className="px-3 py-2">
                         <TextField type="number" value={String(r.price)} onChange={(e) => updatePrice(idx, Number(e.target.value))} />
                       </td>
-                      <td className="px-3 py-2 font-semibold text-gray-900">{Currency(r.qty * r.price)}</td>
+                      <td className="px-3 py-2 font-semibold text-black">{Currency(r.qty * r.price)}</td>
                       <td className="px-3 py-2"><button className="text-sm text-rose-600 hover:text-rose-800 font-medium" onClick={() => removeRow(idx)}>Remove</button></td>
                     </tr>
                   ))}

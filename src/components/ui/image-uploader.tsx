@@ -15,6 +15,7 @@ type ImageUploaderProps = {
 
 export default function ImageUploader({ value, onChange, circle = true, size = 160, widthPx, heightPx, placeholder, initialUrl }: ImageUploaderProps) {
   const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
+  const [isDragging, setIsDragging] = React.useState(false);
 
   React.useEffect(() => {
     if (!value) {
@@ -37,6 +38,38 @@ export default function ImageUploader({ value, onChange, circle = true, size = 1
     onChange?.(f);
   }
 
+  function handleDragEnter(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      // Check if it's an image
+      if (file.type.startsWith('image/')) {
+        onChange?.(file);
+      }
+    }
+  }
+
   const resolvedWidth = !circle && typeof widthPx === "number" ? widthPx : size;
   const resolvedHeight = !circle && typeof heightPx === "number" ? heightPx : size;
 
@@ -49,7 +82,15 @@ export default function ImageUploader({ value, onChange, circle = true, size = 1
       <button
         type="button"
         onClick={handlePick}
-        className="group grid place-items-center border-2 border-dashed border-gray-300 hover:border-[#0F317A]/50"
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        className={`group grid place-items-center border-2 border-dashed transition-colors ${
+          isDragging 
+            ? 'border-[#0F317A] bg-blue-50/50' 
+            : 'border-gray-300 hover:border-[#0F317A]/50'
+        }`}
         style={containerStyle}
       >
         {previewUrl ? (
@@ -67,7 +108,7 @@ export default function ImageUploader({ value, onChange, circle = true, size = 1
                 </svg>
               </div>
             )}
-            <div className="mt-2 text-sm">Upload</div>
+            <div className="mt-2 text-sm">{isDragging ? 'Drop here' : 'Click or drag to upload'}</div>
           </div>
         )}
       </button>

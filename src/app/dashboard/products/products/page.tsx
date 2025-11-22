@@ -7,7 +7,7 @@ import type { Product, MultimodalEmbeddingResponse } from "@/types";
 import { Currency } from "@/types";
 import SearchInput from "@/components/ui/search-input";
 import Button from "@/components/ui/button";
-import SideDrawer from "@/components/ui/side-drawer";
+import Modal from "@/components/ui/modal";
 import TextField from "@/components/ui/text-field";
 import TextArea from "@/components/ui/text-area";
 import ImageUploader from "@/components/ui/image-uploader";
@@ -81,27 +81,27 @@ export default function Product() {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="min-w-full text-left text-sm">
-          <thead>
-            <tr className="border-y-2 text-gray-700 font-semibold" style={{ borderImage: "linear-gradient(90deg, var(--brand-start), var(--brand-end)) 1" }}>
-              <th className="px-4 py-3 w-14">No.</th>
-              <th className="px-4 py-3">Product</th>
-              <th className="px-4 py-3">SKU</th>
-              <th className="px-4 py-3">Size</th>
-              <th className="px-4 py-3">Category</th>
-              <th className="px-4 py-3">Price</th>
-              <th className="px-4 py-3">Stock</th>
-              <th className="px-4 py-3 w-8"></th>
+        <table className="min-w-full text-left text-sm border-2 border-black">
+          <thead className="table-header-gradient text-white font-semibold">
+            <tr>
+              <th className="px-3 py-2 w-14">No.</th>
+              <th className="px-3 py-2">Product</th>
+              <th className="px-3 py-2">SKU</th>
+              <th className="px-3 py-2">Size</th>
+              <th className="px-3 py-2">Category</th>
+              <th className="px-3 py-2">Price</th>
+              <th className="px-3 py-2">Stock</th>
+              <th className="px-3 py-2 w-8"></th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody>
             {filteredRows.map((p, idx) => (
-              <tr key={p.id} className="hover:bg-brand-subtle transition-colors">
-                <td className="px-4 py-3 text-gray-700">{idx + 1}.</td>
-                <td className="px-4 py-3">
+              <tr key={p.id} className="hover:bg-gray-100 border-t border-gray-300">
+                <td className="px-3 py-2 text-black">{idx + 1}.</td>
+                <td className="px-3 py-2">
                   <div className="flex items-center gap-3">
                     {p.image_url ? (
-                      <img src={p.image_url} alt={p.name} className="h-9 w-9 rounded-lg object-cover border-2" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }} />
+                      <img src={p.image_url} alt={p.name} className="h-9 w-9 rounded-lg object-cover border-2 border-black" />
                     ) : (
                       <span className="grid h-9 w-9 place-items-center rounded-lg bg-brand text-white">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -111,16 +111,16 @@ export default function Product() {
                       </span>
                     )}
                     <div>
-                      <div className="font-semibold text-gray-900">{p.name}</div>
+                      <div className="font-semibold text-black">{p.name}</div>
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-3 text-gray-700">{p.sku}</td>
-                <td className="px-4 py-3 text-gray-700">{(p as any).size ?? "-"}</td>
-                <td className="px-4 py-3 text-gray-700">{(p as any).product_categories?.name ?? "-"}</td>
-                <td className="px-4 py-3 font-semibold text-gray-900">{Currency(p.price)}</td>
-                <td className="px-4 py-3 font-semibold text-gray-900">{p.stock}</td>
-                <td className="px-4 py-3">
+                <td className="px-3 py-2 text-black">{p.sku}</td>
+                <td className="px-3 py-2 text-black">{(p as any).size ?? "-"}</td>
+                <td className="px-3 py-2 text-black">{(p as any).product_categories?.name ?? "-"}</td>
+                <td className="px-3 py-2 font-semibold text-black">{Currency(p.price)}</td>
+                <td className="px-3 py-2 font-semibold text-black">{p.stock}</td>
+                <td className="px-3 py-2">
                   <div className="flex items-center justify-end gap-2">
                     <button
                       className="inline-flex h-8 items-center justify-center rounded-lg border-2 px-3 text-sm font-medium hover:bg-brand-subtle transition-all"
@@ -619,49 +619,86 @@ function ProductDrawer({ mode, productId, onClose }: DrawerProps) {
   }
 
   return (
-    <SideDrawer
-      open
-      onClose={onClose}
+    <Modal
+      open={true}
+      onOpenChange={(open) => !open && onClose()}
       title={mode === "add" ? "Add Product" : "Edit Product"}
-      footer={(
-        <div className="flex items-center justify-end gap-3">
-          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button onClick={onSave} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
-        </div>
-      )}
+      widthClassName="max-w-3xl"
     >
-      <div className="grid gap-4">
-        <div className="grid place-items-center gap-3">
-          <ImageUploader value={imageFile} onChange={setImageFile} circle={false} widthPx={Number(imageWidth) || 160} heightPx={Number(imageHeight) || 160} initialUrl={editing?.image_url} />
-          <div className="grid grid-cols-2 gap-3 w-full">
-            <TextField label="Image width (px)" type="number" placeholder="e.g. 600" value={imageWidth} onChange={(e) => setImageWidth(e.target.value)} />
-            <TextField label="Image height (px)" type="number" placeholder="e.g. 600" value={imageHeight} onChange={(e) => setImageHeight(e.target.value)} />
+      <div className="grid gap-6 max-h-[70vh] overflow-y-auto px-1">
+        {/* Product Information */}
+        <div className="space-y-4">
+          <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Product Information</h3>
+          <TextField label="Name" placeholder="Product name" value={name} onChange={(e) => setName(e.target.value)} required />
+          <div className="grid grid-cols-2 gap-4">
+            <TextField label="SKU" placeholder="SKU" value={sku} onChange={(e) => setSku(e.target.value)} required />
+            <TextField label="Size" placeholder="Size" value={size} onChange={(e) => setSize(e.target.value)} required />
           </div>
-        </div>
-        <TextField label="Name" placeholder="Product name" value={name} onChange={(e) => setName(e.target.value)} required />
-        <div className="grid grid-cols-2 gap-4">
-          <TextField label="SKU" placeholder="SKU" value={sku} onChange={(e) => setSku(e.target.value)} required />
-          <TextField label="Size" placeholder="Size" value={size} onChange={(e) => setSize(e.target.value)} required />
           <div>
-            <div className="mb-1 text-sm text-gray-700">Category</div>
+            <div className="mb-1 text-sm font-medium text-gray-700">Category</div>
             <select
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0F317A] focus:outline-none focus:ring-1 focus:ring-[#0F317A]"
               value={categoryId}
               onChange={(e) => setCategoryId(e.target.value)}
             >
-              <option value="">— None —</option>
+              <option value="">— Select Category —</option>
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <TextField label="Price" type="number" placeholder="0.00" value={price} onChange={(e) => setPrice(e.target.value)} required />
+            <TextField label="Stock" type="number" placeholder="0" value={stock} onChange={(e) => setStock(e.target.value)} required />
+          </div>
+          <TextArea label="Description" rows={4} placeholder="Describe the product..." value={description} onChange={(e) => setDescription(e.target.value)} required />
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          <TextField label="Price" type="number" placeholder="0.00" value={price} onChange={(e) => setPrice(e.target.value)} required />
-          <TextField label="Stock" type="number" placeholder="0" value={stock} onChange={(e) => setStock(e.target.value)} required />
+
+        {/* Product Image */}
+        <div className="border-t border-gray-200 pt-6">
+          <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">Product Image</h3>
+          <div className="flex items-start gap-6">
+            <div className="flex-shrink-0">
+              <ImageUploader 
+                value={imageFile} 
+                onChange={setImageFile} 
+                circle={false} 
+                widthPx={Number(imageWidth) || 200} 
+                heightPx={Number(imageHeight) || 200} 
+                initialUrl={editing?.image_url} 
+              />
+            </div>
+            <div className="flex-1 space-y-3">
+              <div>
+                <p className="text-sm font-medium text-gray-700 mb-2">Image Dimensions</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <TextField label="Width (px)" type="number" placeholder="200" value={imageWidth} onChange={(e) => setImageWidth(e.target.value)} />
+                  <TextField label="Height (px)" type="number" placeholder="200" value={imageHeight} onChange={(e) => setImageHeight(e.target.value)} />
+                </div>
+              </div>
+              <div className="rounded-lg bg-blue-50 border border-blue-200 p-3">
+                <div className="flex gap-2">
+                  <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div>
+                    <p className="text-sm font-medium text-blue-900">Image Guidelines</p>
+                    <ul className="mt-1 text-xs text-blue-700 space-y-1">
+                      <li>• Recommended: Square images (1:1 ratio)</li>
+                      <li>• Formats: JPG, PNG, WebP</li>
+                      <li>• Max size: 5MB</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-        <TextArea label="Description" rows={4} placeholder="Describe the product..." value={description} onChange={(e) => setDescription(e.target.value)} required />
       </div>
-    </SideDrawer>
+      <div className="mt-6 flex items-center justify-end gap-3 border-t border-gray-200 pt-4">
+        <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+        <Button onClick={onSave} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
+      </div>
+    </Modal>
   );
 }

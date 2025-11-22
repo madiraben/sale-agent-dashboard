@@ -46,10 +46,7 @@ export default function Topbar({ title }: TopbarProps) {
         </div>
         <button 
           onClick={handleSignOut} 
-          className="rounded-lg px-4 py-2 text-sm font-semibold text-white transition-all hover:opacity-90"
-          style={{
-            background: 'linear-gradient(135deg, var(--brand-start), var(--brand-end))'
-          }}
+          className="rounded-lg bg-red-500 px-4 py-2 text-sm text-white transition-all hover:bg-blue-600"
         >
           Sign out
         </button>

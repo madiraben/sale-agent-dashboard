@@ -15,8 +15,8 @@ export default function Button({
 }: ButtonProps) {
   const base = "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm transition-colors";
   const byVariant: Record<ButtonVariant, string> = {
-    primary: "bg-gradient-to-r from-cyan-500 to-purple-600 text-white shadow-lg hover:opacity-95",
-    outline: "border border-purple-300 bg-white text-purple-700 hover:bg-purple-50",
+    primary: "bg-blue-500 text-white shadow-lg hover:bg-blue-600",
+    outline: "border border-blue-300 bg-white text-blue-700 hover:bg-blue-50",
     ghost: "text-gray-700 hover:bg-gray-100",
   };
   const width = fullWidth ? "w-full" : "";

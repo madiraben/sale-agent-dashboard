@@ -23,49 +23,83 @@ export default function CustomerHistory() {
     return "";
   }, [paramId, pathname]);
 
-  const [customer, setCustomer] = useState<Customer | null | undefined>(undefined);
+  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [loading, setLoading] = useState(true);
   const [history, setHistory] = useState<Order[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   type DisplayOrderItem = { name: string; qty: number; price: number };
   const [orderItems, setOrderItems] = useState<DisplayOrderItem[]>([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const isMounted = useRef(true);
-
-  useEffect(() => {
-    return () => { isMounted.current = false; };
-  }, []);
 
   const loadCustomerAndOrders = useCallback(async () => {
-    if (!id || typeof id !== "string") return;
+    if (!id || typeof id !== "string" || id.length === 0) {
+      return;
+    }
+    
+    console.log("Loading customer with ID:", id);
+    setLoading(true);
     setError(null);
+    
     try {
+      // Get user's tenant_id first
+      const { data: userTenant } = await supabase
+        .from("user_tenants")
+        .select("tenant_id")
+        .limit(1)
+        .single();
+
+      const tenantId = userTenant?.tenant_id;
+      
+      if (!tenantId) {
+        throw new Error("No tenant_id found for user");
+      }
+
+      console.log("Fetching customer for tenant:", tenantId);
+      
       const { data: c, error: cErr } = await supabase
         .from("customers")
         .select("id,name,phone,email,address")
         .eq("id", id)
+        .eq("tenant_id", tenantId)
         .single();
+        
+      console.log("Customer data:", c, "Error:", cErr);
+      
       if (cErr) throw cErr;
-      if (!c) { if (isMounted.current) setCustomer(null); return; }
-      if (isMounted.current) setCustomer(c as Customer);
+      if (!c) { 
+        setCustomer(null);
+        setLoading(false);
+        return;
+      }
+      
+      setCustomer(c as Customer);
 
       const { data: orders, error: oErr } = await supabase
         .from("orders")
         .select("id,date,total,status")
         .eq("customer_id", id)
+        .eq("tenant_id", tenantId)
         .order("date", { ascending: false });
+        
       if (oErr) throw oErr;
-      if (isMounted.current) setHistory((orders as any) ?? []);
+      setHistory((orders as any) ?? []);
+      
+      console.log("Data loaded successfully");
     } catch (e: any) {
       console.error("Failed to load customer/history", e?.message || e);
-      if (isMounted.current) { setError(e?.message ?? "Failed to load"); setCustomer(null); }
+      setError(e?.message ?? "Failed to load"); 
+      setCustomer(null); 
+    } finally {
+      setLoading(false);
+      console.log("Loading complete");
     }
   }, [id, supabase]);
 
   useEffect(() => { loadCustomerAndOrders(); }, [loadCustomerAndOrders]);
 
-  if (customer === undefined) return <LoadingScreen />;
-  if (customer === null) {
+  if (loading) return <LoadingScreen />;
+  if (!customer) {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
@@ -97,22 +131,21 @@ export default function CustomerHistory() {
       </div>
 
       <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5">
-        <h3 className="mb-4 text-base font-bold text-gray-900">Order history</h3>
         <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
-            <thead className="text-gray-700 font-semibold">
-              <tr className="border-b-2" style={{ borderImage: "linear-gradient(90deg, var(--brand-start), var(--brand-end)) 1" }}>
+          <table className="min-w-full text-left text-sm border-2 border-black">
+            <thead className="table-header-gradient text-white font-semibold">
+              <tr>
                 <th className="px-3 py-2">Order ID</th>
                 <th className="px-3 py-2">Date</th>
                 <th className="px-3 py-2">Total</th>
                 <th className="px-3 py-2">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody>
               {history.map((o) => (
                 <tr
                   key={o.id}
-                  className="hover:bg-gray-50 cursor-pointer"
+                  className="hover:bg-gray-100 cursor-pointer"
                   onClick={async () => {
                     setSelectedOrder(o);
                     setItemsLoading(true);
@@ -132,10 +165,10 @@ export default function CustomerHistory() {
                     }
                   }}
                 >
-                  <td className="px-3 py-2 font-semibold text-gray-900">{o.id}</td>
-                  <td className="px-3 py-2 text-gray-700">{o.date}</td>
-                  <td className="px-3 py-2 font-semibold text-gray-900">{Currency(o.total as number)}</td>
-                  <td className="px-3 py-2 capitalize text-gray-700">{o.status}</td>
+                  <td className="px-3 py-2 font-semibold text-black">{o.id}</td>
+                  <td className="px-3 py-2 text-black">{o.date}</td>
+                  <td className="px-3 py-2 font-semibold text-black">{Currency(o.total as number)}</td>
+                  <td className="px-3 py-2 capitalize text-black">{o.status}</td>
                 </tr>
               ))}
               {history.length === 0 ? (
@@ -152,7 +185,12 @@ export default function CustomerHistory() {
       {selectedOrder ? (
         <Modal
           open={true}
-          onOpenChange={(o) => { if (!o) { setSelectedOrder(null); setOrderItems([]); } }}
+          onOpenChange={(o) => {
+            if (!o) {
+              setSelectedOrder(null);
+              setOrderItems([]);
+            }
+          }}
           title={<>Order {selectedOrder.id}</>}
           widthClassName="max-w-2xl"
         >
@@ -167,10 +205,10 @@ export default function CustomerHistory() {
                 <div className="text-base font-bold text-gray-900">{Currency(selectedOrder.total)}</div>
               </div>
             </div>
-            <div className="rounded-lg border-2 bg-brand-subtle" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b-2 text-gray-700 font-semibold" style={{ borderImage: "linear-gradient(90deg, var(--brand-start), var(--brand-end)) 1" }}>
+            <div className="rounded-lg border-2 border-black bg-white">
+              <table className="w-full text-left text-sm bg-white rounded-lg overflow-hidden">
+                <thead className="table-header-gradient text-white font-semibold">
+                  <tr>
                     <th className="px-3 py-2">Product</th>
                     <th className="px-3 py-2">Qty</th>
                     <th className="px-3 py-2">Price</th>
@@ -179,19 +217,30 @@ export default function CustomerHistory() {
                 </thead>
                 <tbody>
                   {itemsLoading ? (
-                    <tr><td colSpan={4} className="px-3 py-4 text-center text-gray-500">Loading items...</td></tr>
+                    <tr>
+                      <td colSpan={4} className="px-3 py-4 text-center text-gray-200 bg-white">
+                        Loading items...
+                      </td>
+                    </tr>
                   ) : (
                     orderItems.map((it, i) => (
-                      <tr key={i} className="border-t">
-                        <td className="px-3 py-2 font-medium text-gray-900">{it.name}</td>
-                        <td className="px-3 py-2 text-gray-700">{it.qty}</td>
-                        <td className="px-3 py-2 text-gray-700">{Currency(it.price)}</td>
-                        <td className="px-3 py-2 font-semibold text-gray-900">{Currency(it.price * it.qty)}</td>
+                      <tr
+                        key={i}
+                        className={i % 2 === 0 ? "bg-white" : "bg-gray-100 border-t border-gray-800"}
+                      >
+                        <td className="px-3 py-2 font-medium text-black">{it.name}</td>
+                        <td className="px-3 py-2 text-black">{it.qty}</td>
+                        <td className="px-3 py-2 text-black">{Currency(it.price)}</td>
+                        <td className="px-3 py-2 font-semibold text-black">{Currency(it.price * it.qty)}</td>
                       </tr>
                     ))
                   )}
                   {!itemsLoading && orderItems.length === 0 ? (
-                    <tr><td colSpan={4} className="px-3 py-4 text-center text-gray-500">No items</td></tr>
+                    <tr>
+                      <td colSpan={4} className="px-3 py-4 text-center text-gray-400 bg-white">
+                        No items
+                      </td>
+                    </tr>
                   ) : null}
                 </tbody>
               </table>
@@ -202,5 +251,4 @@ export default function CustomerHistory() {
     </div>
   );
 }
-
 

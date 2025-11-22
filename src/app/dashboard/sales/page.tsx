@@ -158,28 +158,6 @@ export default function Sales() {
         </div>
         <div className="flex items-center gap-2">
           <SearchInput className="hidden md:block" placeholder="Search orders" value={q} onChange={(e) => debouncedSetQ(e.target.value)} />
-          <Button 
-            variant="outline" 
-            onClick={loadOrders}
-            disabled={loading}
-            className="flex items-center gap-2"
-          >
-            <svg 
-              width="16" 
-              height="16" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              stroke="currentColor" 
-              strokeWidth="2"
-              className={loading ? "animate-spin" : ""}
-            >
-              <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
-            </svg>
-            {loading ? "Refreshing..." : "Refresh"}
-          </Button>
-          <Link href="/dashboard/sales/new">
-            <Button>New Order</Button>
-          </Link>
         </div>
       </div>
 
@@ -204,44 +182,44 @@ export default function Sales() {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="min-w-full text-left text-sm">
-          <thead>
-            <tr className="border-y-2 text-gray-700 font-semibold" style={{ borderImage: "linear-gradient(90deg, var(--brand-start), var(--brand-end)) 1" }}>
-              <th className="px-4 py-3 w-20">Order</th>
-              <th className="px-4 py-3">Customer</th>
-              <th className="px-4 py-3">Date</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Total</th>
-              <th className="px-4 py-3 text-right">Action</th>
+        <table className="min-w-full text-left text-sm border-2 border-white">
+          <thead className="table-header-gradient text-white font-semibold">
+            <tr>
+              <th className="px-3 py-2 w-20">Order</th>
+              <th className="px-3 py-2">Customer</th>
+              <th className="px-3 py-2">Date</th>
+              <th className="px-3 py-2">Status</th>
+              <th className="px-3 py-2">Total</th>
+              <th className="px-3 py-2 text-right">Action</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody>
             {filtered.map((r) => (
               <tr
                 key={r.id}
-                className="hover:bg-brand-subtle cursor-pointer transition-colors"
+                className="hover:bg-gray-100 cursor-pointer border-t border-gray-300"
                 onClick={() => setSelectedRow(r)}
               >
-                <td className="px-4 py-3 font-semibold text-gray-900">{r.id}</td>
-                <td className="px-4 py-3">
+                <td className="px-3 py-2 font-semibold text-black">{r.id}</td>
+                <td className="px-3 py-2">
                   <Link
                     href={`/dashboard/customers/${r.customerId}`}
-                    className="font-medium text-gray-900 hover:underline"
+                    className="font-medium text-black hover:underline"
                     onClick={(e) => e.stopPropagation()}
                   >
                     {r.customerName}
                   </Link>
                 </td>
-                <td className="px-4 py-3 text-gray-700">{r.date}</td>
-                <td className="px-4 py-3">
+                <td className="px-3 py-2 text-black">{r.date}</td>
+                <td className="px-3 py-2">
                   <Badge
                     variant={r.status === "paid" ? "success" : r.status === "pending" ? "warning" : "danger"}
                   >
                     {r.status}
                   </Badge>
                 </td>
-                <td className="px-4 py-3 font-semibold text-gray-900">{Currency(r.total)}</td>
-                <td className="px-4 py-3">
+                <td className="px-3 py-2 font-semibold text-black">{Currency(r.total)}</td>
+                <td className="px-3 py-2">
                   <div className="flex items-center justify-end gap-2">
                     {r.status === "pending" ? (
                       <>
@@ -370,23 +348,23 @@ function OrderDetailDialog({ row, open, onOpenChange, onAccept, onDecline, busy 
         </div>
         <div>
           <div className="mb-2 font-medium text-gray-700">Items</div>
-          <div className="rounded-lg border-2 bg-brand-subtle" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
+          <div className="rounded-lg border-2 border-black bg-white">
             <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b-2 text-gray-700 font-semibold" style={{ borderImage: "linear-gradient(90deg, var(--brand-start), var(--brand-end)) 1" }}>
+              <thead className="table-header-gradient text-white font-semibold">
+                <tr>
                   <th className="px-3 py-2">Product</th>
                   <th className="px-3 py-2">Qty</th>
                   <th className="px-3 py-2">Price</th>
                   <th className="px-3 py-2">Subtotal</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="bg-white">
                 {(row.items ?? []).map((it, i) => (
-                  <tr key={i} className="border-t">
-                    <td className="px-3 py-2 font-medium text-gray-900">{it.name}</td>
-                    <td className="px-3 py-2 text-gray-700">{it.qty}</td>
-                    <td className="px-3 py-2 text-gray-700">{Currency(it.price)}</td>
-                    <td className="px-3 py-2 font-semibold text-gray-900">{Currency(it.price * it.qty)}</td>
+                  <tr key={i} className="border-t border-gray-300">
+                    <td className="px-3 py-2 font-medium text-black">{it.name}</td>
+                    <td className="px-3 py-2 text-black">{it.qty}</td>
+                    <td className="px-3 py-2 text-black">{Currency(it.price)}</td>
+                    <td className="px-3 py-2 font-semibold text-black">{Currency(it.price * it.qty)}</td>
                   </tr>
                 ))}
               </tbody>

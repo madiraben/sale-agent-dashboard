@@ -70,7 +70,6 @@ export default async function Page() {
           </div>
           <div className="mt-3 flex items-center justify-center gap-2">
             <span className="h-2 w-2 rounded-full bg-gray-300" />
-            <span className="h-2 w-2 rounded-full bg-cyan-500" />
           </div>
         </Card>
 

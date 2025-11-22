@@ -109,24 +109,24 @@ export default function Customers() {
         ) : error ? (
           <div className="py-24 text-center text-sm text-red-500">{error}</div>
         ) : (
-          <table className="min-w-full text-left text-sm">
-            <thead>
-              <tr className="border-y-2 text-gray-700 font-semibold" style={{ borderImage: "linear-gradient(90deg, var(--brand-start), var(--brand-end)) 1" }}>
-                <th className="px-4 py-3 w-14">No.</th>
-                <th className="px-4 py-3">Customer</th>
-                <th className="px-4 py-3">Contact</th>
-                <th className="px-4 py-3">Address</th>
-                <th className="px-4 py-3">Last order</th>
-                <th className="px-4 py-3">Orders</th>
-                <th className="px-4 py-3">Total</th>
-                <th className="px-4 py-3 w-8"></th>
+          <table className="min-w-full text-left text-sm border-2 border-black">
+            <thead className="table-header-gradient text-white font-semibold">
+              <tr>
+                <th className="px-3 py-2 w-14">No.</th>
+                <th className="px-3 py-2">Customer</th>
+                <th className="px-3 py-2">Contact</th>
+                <th className="px-3 py-2">Address</th>
+                <th className="px-3 py-2">Last order</th>
+                <th className="px-3 py-2">Orders</th>
+                <th className="px-3 py-2">Total</th>
+                <th className="px-3 py-2 w-8"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody>
               {filtered.map((r, idx) => (
-                <tr key={r.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-gray-700">{idx + 1}.</td>
-                  <td className="px-4 py-3">
+                <tr key={r.id} className="hover:bg-gray-100 border-t border-gray-300">
+                  <td className="px-3 py-2 text-black">{idx + 1}.</td>
+                  <td className="px-3 py-2">
                     <Link href={`/dashboard/customers/${r.id}`} className="flex items-center gap-3 group">
                       <span className="grid h-9 w-9 place-items-center rounded-full bg-brand text-white transition-transform group-hover:scale-110">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -135,20 +135,20 @@ export default function Customers() {
                         </svg>
                       </span>
                       <div>
-                        <div className="font-semibold text-gray-900 group-hover:text-brand transition-colors">{r.name}</div>
+                        <div className="font-semibold text-black group-hover:text-brand transition-colors">{r.name}</div>
                         <div className="text-xs text-gray-500">View history</div>
                       </div>
                     </Link>
                   </td>
-                  <td className="px-4 py-3 text-gray-700">
+                  <td className="px-3 py-2 text-black">
                     <div>{r.phone}</div>
                     <div className="text-xs text-gray-500">{r.email ?? "-"}</div>
                   </td>
-                  <td className="px-4 py-3 text-gray-700">{r.address ?? "-"}</td>
-                  <td className="px-4 py-3 text-gray-700">{r.last_date ?? "-"}</td>
-                  <td className="px-4 py-3 font-semibold text-gray-900">{r.orders_count}</td>
-                  <td className="px-4 py-3 font-semibold text-gray-900">{Currency(r.total as number)}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-2 text-black">{r.address ?? "-"}</td>
+                  <td className="px-3 py-2 text-black">{r.last_date ?? "-"}</td>
+                  <td className="px-3 py-2 font-semibold text-black">{r.orders_count}</td>
+                  <td className="px-3 py-2 font-semibold text-black">{Currency(r.total as number)}</td>
+                  <td className="px-3 py-2">
                     <IconButton round className="h-8 w-8" aria-label="More">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                         <circle cx="12" cy="5" r="1.5" />

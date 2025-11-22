@@ -70,20 +70,20 @@ export default function SalesKPI() {
 
   return (
     <div className="space-y-3">
-      <div className="grid gap-4 md:grid-cols-4">
-        <div className="rounded-xl border-2 bg-brand-subtle p-4 shadow-sm" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
+      <div className="flex flex-col gap-4">
+        <div className="rounded-xl border-2 border-blue-500 bg-blue-50 p-4 shadow-sm">
           <div className="text-xs font-medium text-gray-600">Today</div>
           <div className="text-xl font-bold text-gray-900">{loading ? "—" : Currency(todayTotal)}</div>
         </div>
-        <div className="rounded-xl border-2 bg-brand-subtle p-4 shadow-sm" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
+        <div className="rounded-xl border-2 border-blue-500 bg-blue-50 p-4 shadow-sm">
           <div className="text-xs font-medium text-gray-600">This Week</div>
           <div className="text-xl font-bold text-gray-900">{loading ? "—" : Currency(thisWeekTotal)}</div>
         </div>
-        <div className="rounded-xl border-2 bg-brand-subtle p-4 shadow-sm" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
+        <div className="rounded-xl border-2 border-blue-500 bg-blue-50 p-4 shadow-sm">
           <div className="text-xs font-medium text-gray-600">Last Week</div>
           <div className="text-xl font-bold text-gray-900">{loading ? "—" : Currency(lastWeekTotal)}</div>
         </div>
-        <div className="rounded-xl border-2 bg-brand-subtle p-4 shadow-sm" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
+        <div className="rounded-xl border-2 border-blue-500 bg-blue-50 p-4 shadow-sm">
           <div className="text-xs font-medium text-gray-600">This Month</div>
           <div className="text-xl font-bold text-gray-900">{loading ? "—" : Currency(thisMonthTotal)}</div>
         </div>
