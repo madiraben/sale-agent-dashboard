@@ -17,8 +17,20 @@ export async function GET(req: NextRequest) {
 }
 
 // Track recent message IDs to prevent duplicate processing
-const processedMessages = new Set<string>();
+// Using a Map with timestamps for automatic cleanup
+const processedMessages = new Map<string, number>();
 const MESSAGE_EXPIRY = 60000; // 1 minute
+const MAX_CACHE_SIZE = 10000; // Prevent unbounded growth
+
+// Cleanup old entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, timestamp] of processedMessages.entries()) {
+    if (now - timestamp > MESSAGE_EXPIRY) {
+      processedMessages.delete(key);
+    }
+  }
+}, 30000); // Clean up every 30 seconds
 
 // POST: Messenger webhook
 export async function POST(req: NextRequest) {
@@ -49,14 +61,21 @@ export async function POST(req: NextRequest) {
           
           // Prevent duplicate processing using message ID
           const dedupeKey = messageId || `${pageId}:${senderId}:${text}:${evt?.timestamp}`;
-          if (processedMessages.has(dedupeKey)) {
+          const lastProcessed = processedMessages.get(dedupeKey);
+          
+          if (lastProcessed && (Date.now() - lastProcessed < MESSAGE_EXPIRY)) {
             logger.info(`[INFO] Skipping duplicate message: ${dedupeKey}`);
             continue;
           }
           
-          // Mark as processed
-          processedMessages.add(dedupeKey);
-          setTimeout(() => processedMessages.delete(dedupeKey), MESSAGE_EXPIRY);
+          // Mark as processed with timestamp
+          processedMessages.set(dedupeKey, Date.now());
+          
+          // Enforce max cache size (simple FIFO eviction)
+          if (processedMessages.size > MAX_CACHE_SIZE) {
+            const firstKey = processedMessages.keys().next().value;
+            if (firstKey) processedMessages.delete(firstKey);
+          }
           
           // Process message
           logger.info(`[INFO] Recieved message: ${text}`);

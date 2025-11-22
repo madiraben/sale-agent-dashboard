@@ -296,7 +296,7 @@ Remember: You're here to make shopping easy and enjoyable, no stress!`
         <div className="lg:col-span-2 space-y-6">
           {/* Account Information Card */}
           <Card>
-            <div className="border-b-2 pb-4 mb-6" style={{ borderImage: "linear-gradient(90deg, var(--brand-start), var(--brand-end)) 1" }}>
+            <div className="border-b-2 border-brand-gradient-horizontal pb-4 mb-6">
               <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />

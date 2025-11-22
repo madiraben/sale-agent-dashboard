@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { buildRagSystemPrompt } from "@/lib/prompts/rag";
 import { getTextEmbedding } from "@/lib/embeddings";
+import { withRateLimit, strictLimiter } from "@/lib/rate-limit";
+import { validate, ragChatSchema } from "@/lib/validators";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
+import logger from "@/lib/logger";
 
 type Message = {
   role: "user" | "assistant" | "system";
@@ -10,51 +14,78 @@ type Message = {
 
 export async function POST(req: NextRequest) {
   try {
-    const { query = [], conversationId: incomingConversationId } = await req.json();
+    // Rate limiting (20 requests per minute)
+    const rateLimitError = await withRateLimit(req, 20, strictLimiter);
+    if (rateLimitError) return rateLimitError;
 
-    if (!query) {
-      return NextResponse.json({ error: "Query is required" }, { status: 400 });
+    // Parse and validate input
+    const body = await req.json();
+    const validation = validate(ragChatSchema, body);
+    
+    if (!validation.success) {
+      return NextResponse.json(
+        { error: "Invalid input", details: validation.error },
+        { status: 400 }
+      );
     }
 
-    console.log("🤖 RAG Chat - Processing query:", query);
+    const { query, conversationId: incomingConversationId } = validation.data;
 
-    // 0. Init supabase and identify user
+    // Init supabase and identify user
     const supabase = await createSupabaseServerClient();
     const { data: userRes } = await supabase.auth.getUser();
     const userId = userRes?.user?.id;
+    
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    logger.info("RAG Chat request", { userId, queryLength: query.length });
+
     // Create or load conversation
-    let conversationId: string | null = null;
+    let conversationId: string;
     let conversationSummary: string | null = null;
+    
     if (incomingConversationId) {
       const { data: conv, error: convErr } = await supabase
         .from("chat_conversations")
         .select("id, summary")
         .eq("id", incomingConversationId)
+        .eq("user_id", userId) // Ensure ownership
         .single();
+        
       if (!conv || convErr) {
-        return NextResponse.json({ error: "conversation_not_found" }, { status: 404 });
+        return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
       }
+      
       conversationId = conv.id;
       conversationSummary = (conv as any)?.summary ?? null;
     } else {
       const { data: conv, error: convErr } = await supabase
         .from("chat_conversations")
-        .insert({ user_id: userId, title: (query as string).slice(0, 80) })
+        .insert({ user_id: userId, title: query.slice(0, 80) })
         .select("id, summary")
         .single();
-      if (convErr || !conv) throw new Error("create_conversation_failed");
+        
+      if (convErr || !conv) {
+        logger.error("Failed to create conversation", { error: convErr });
+        return NextResponse.json({ error: "Failed to create conversation" }, { status: 500 });
+      }
+      
       conversationId = conv.id;
       conversationSummary = (conv as any)?.summary ?? null;
     }
 
     // Persist the user message immediately
     try {
-      await supabase.from("chat_messages").insert({ conversation_id: conversationId, role: "user", content: query }).select("id").single();
-    } catch {}
+      await supabase
+        .from("chat_messages")
+        .insert({ conversation_id: conversationId, role: "user", content: query })
+        .select("id")
+        .single();
+    } catch (error) {
+      logger.error("Failed to persist user message", { error });
+    }
 
     // Load recent history for this conversation (server-trusted under RLS)
     const { data: priorMessages } = await supabase
@@ -68,9 +99,20 @@ export async function POST(req: NextRequest) {
     // const recentHistory = (priorMessages || []).slice(-6);
     // const dbHistory = recentHistory.map((m: any) => ({ role: m.role, content: m.content }));
 
-    // 1. Get query embedding (direct call, avoids internal HTTP)
-    const textEmbedding = await getTextEmbedding(query);
-    console.log("✅ Got query embedding:", textEmbedding);
+    // 1. Get query embedding with timeout
+    let textEmbedding: number[];
+    try {
+      textEmbedding = await Promise.race([
+        getTextEmbedding(query),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Embedding timeout")), 10000)
+        ),
+      ]);
+      logger.info("Generated query embedding");
+    } catch (error) {
+      logger.error("Failed to generate embedding", { error });
+      return NextResponse.json({ error: "Failed to generate embedding" }, { status: 500 });
+    }
 
     // 2. Search for relevant products using RAG under the caller's session (RLS enforced)
     //    supabase already initialized with user session
@@ -157,19 +199,29 @@ export async function POST(req: NextRequest) {
         content: query,
       },
     ];
-    console.log("🌐 Messages:", messages);
-    console.log("🌐 Calling OpenAI (streaming)...");
-    const openaiResp = await fetch(process.env.OPENAI_BASE_URL + "/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-      body: JSON.stringify({ model: process.env.OPENAI_MODEL, messages, temperature: 0.7, max_tokens: 500, stream: true }),
-    });
+    logger.info("Calling OpenAI API (streaming)");
+    const openaiResp = await fetchWithTimeout(
+      process.env.OPENAI_BASE_URL + "/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: process.env.OPENAI_MODEL,
+          messages,
+          temperature: 0.7,
+          max_tokens: 500,
+          stream: true,
+        }),
+      },
+      30000 // 30 second timeout
+    );
 
     if (!openaiResp.ok || !openaiResp.body) {
-      let details: any = null;
-      try { details = await openaiResp.json(); } catch {}
-      console.error("OpenAI error:", details || openaiResp.statusText);
-      throw new Error("OpenAI API failed");
+      logger.error("OpenAI request failed", { status: openaiResp.status });
+      return NextResponse.json({ error: "AI service unavailable" }, { status: 502 });
     }
 
     const encoder = new TextEncoder();
@@ -213,12 +265,15 @@ export async function POST(req: NextRequest) {
             }
             read();
           }).catch((err) => {
+            logger.error("Stream error", { error: err });
             controller.error(err);
           });
         }
         read();
       },
-      cancel() {},
+      cancel() {
+        logger.info("Stream cancelled");
+      },
     });
 
     const response = new Response(stream, {
@@ -235,12 +290,27 @@ export async function POST(req: NextRequest) {
     (async () => {
       try {
         // Wait briefly to allow buffer to collect during stream; then save
-        await new Promise((r) => setTimeout(r, 50));
+        await new Promise((r) => setTimeout(r, 100));
+        
         if (assistantBuffer.current.trim().length > 0) {
           try {
-            await supabase.from("chat_messages").insert({ conversation_id: conversationId, role: "assistant", content: assistantBuffer.current }).select("id").single();
-          } catch {}
-          await supabase.from("chat_conversations").update({ updated_at: new Date().toISOString() }).eq("id", conversationId);
+            await supabase
+              .from("chat_messages")
+              .insert({
+                conversation_id: conversationId,
+                role: "assistant",
+                content: assistantBuffer.current,
+              })
+              .select("id")
+              .single();
+              
+            await supabase
+              .from("chat_conversations")
+              .update({ updated_at: new Date().toISOString() })
+              .eq("id", conversationId);
+          } catch (error) {
+            logger.error("Failed to persist assistant message", { error });
+          }
         }
 
         // Lightweight summarization trigger every ~12 messages
@@ -281,12 +351,9 @@ export async function POST(req: NextRequest) {
     })();
 
     return response;
-  } catch (err: any) {
-    console.error("❌ RAG chat error:", err);
-    return NextResponse.json(
-      { error: err.message || "Failed to process request" },
-      { status: 500 }
-    );
+  } catch (error: any) {
+    logger.error("RAG chat error", { message: error?.message, stack: error?.stack });
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 

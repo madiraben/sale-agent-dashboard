@@ -30,7 +30,7 @@ export default function PublicBillingPage() {
   return (
     <div className="min-h-dvh bg-[#EEF2F7] p-6 md:p-10">
       <div className="mx-auto max-w-4xl mt-[100px]">
-        <div className="mb-6 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5 border-2 bg-brand-subtle" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
+        <div className="mb-6 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5 border-2 border-brand-gradient bg-brand-subtle">
           <h1 className="text-2xl font-bold text-brand">Pro Plan</h1>
           <p className="mt-2 text-sm text-gray-700">Unlock full access to inventory, orders, AI knowledge base, analytics and more.</p>
           <div className="mt-4 text-3xl font-bold text-brand">$20<span className="text-lg text-gray-700">/month</span></div>
@@ -54,7 +54,7 @@ export default function PublicBillingPage() {
             <h2 className="mb-2 text-lg font-bold text-brand">Compare plans</h2>
             <table className="w-full text-left text-sm">
               <thead className="text-gray-700 font-semibold">
-                <tr className="border-b-2" style={{ borderImage: "linear-gradient(90deg, var(--brand-start), var(--brand-end)) 1" }}>
+                <tr className="border-b-2 border-brand-gradient-horizontal">
                   <th className="px-2 py-2">Feature</th>
                   <th className="px-2 py-2">Free</th>
                   <th className="px-2 py-2">Pro</th>
@@ -143,7 +143,7 @@ function PlanCard({
   };
 
   return (
-    <div className="rounded-xl border-2 p-4 transition-all duration-300 hover:bg-brand-subtle" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
+    <div className="rounded-xl border-2 border-brand-gradient p-4 transition-all duration-300 hover:bg-brand-subtle">
       <div className="text-base font-semibold text-gray-900">{title}</div>
       <div className="mt-1 text-2xl font-bold text-brand">
         {priceLabel}

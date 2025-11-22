@@ -394,7 +394,7 @@ export default function Detail() {
             </div>
           </div>
 
-          <div className="mt-6 grid grid-cols-2 gap-4 rounded-lg border-2 bg-brand-subtle p-4 text-sm" style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}>
+          <div className="mt-6 grid grid-cols-2 gap-4 rounded-lg border-2 border-brand-gradient bg-brand-subtle p-4 text-sm">
             <div className="font-medium text-gray-700">Preview</div>
             <div className="text-right font-bold text-gray-900">{Currency(price)}</div>
             <div className="font-medium text-gray-700">In stock</div>

@@ -123,8 +123,7 @@ export default function Product() {
                 <td className="px-3 py-2">
                   <div className="flex items-center justify-end gap-2">
                     <button
-                      className="inline-flex h-8 items-center justify-center rounded-lg border-2 px-3 text-sm font-medium hover:bg-brand-subtle transition-all"
-                      style={{ borderImage: "linear-gradient(135deg, var(--brand-start), var(--brand-end)) 1" }}
+                      className="btn-brand-outline rounded-lg h-8"
                       onClick={() => router.push(`/dashboard/products/products/${p.id}`)}
                     >
                       Edit

@@ -19,11 +19,7 @@ export default function Topbar({ title }: TopbarProps) {
   };
   return (
     <header 
-      className="flex h-[80px] items-center justify-between bg-white px-6 md:px-10"
-      style={{
-        borderBottom: '2px solid',
-        borderImage: 'linear-gradient(90deg, var(--brand-start), var(--brand-end)) 1'
-      }}
+      className="flex h-[80px] items-center justify-between bg-white px-6 md:px-10 border-b-2 border-brand-gradient-horizontal"
     >
       <div className="flex items-center gap-5">
         {title ? <h1 className="text-xl font-bold text-gray-900">{title}</h1> : null}
